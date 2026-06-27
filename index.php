@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <h2>Accedi</h2>
+    <h2>MDASH login</h2>
     <form id="loginForm">
         <div>
             <label for="user">User:</label>
