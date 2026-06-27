@@ -9,7 +9,7 @@ function respond(bool $success, string $message, array $data = []): void {
         'message' => $message,
         'data' => $data,
     ]);
-    exit;
+    exit; 
 }
 
 $dbHost = getenv('DB_HOST') ?: 'localhost';
