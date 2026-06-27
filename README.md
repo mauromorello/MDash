@@ -61,7 +61,7 @@ La struttura proposta del progetto è la seguente:
 ## Tecnologie suggerite
 
 - PHP per il backend;
-- MySQL o MariaDB per il database;
+- MySQL per il database;
 - HTML/CSS/JavaScript per l'interfaccia;
 - API di Gemini per la generazione delle dashboard;
 - Librerie per l'importazione dei file CSV/Excel, se necessarie.
