@@ -15,7 +15,7 @@ function respond(bool $success, string $message, array $data = []): void {
 $dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
-$dbPass = getenv('DB_PASS') ?: '';
+$dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 try {
     $pdo = new PDO(

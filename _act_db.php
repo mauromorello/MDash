@@ -11,7 +11,7 @@ function respond(bool $success, string $message, array $data = []){
 $dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
-$dbPass = getenv('DB_PASS') ?: '';
+$dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 // minimal auth: check cookie or session
 $user = null;
