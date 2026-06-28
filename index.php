@@ -45,7 +45,13 @@
             .then(result => {
                 const message = document.getElementById('message');
                 if (result.success) {
-                    message.innerHTML = '<strong>Login riuscito!</strong> ' + result.message;
+                    // salva cookie con info utente e reindirizza
+                    try {
+                        const user = result.data.user || {};
+                        const cookieVal = encodeURIComponent(JSON.stringify(user));
+                        document.cookie = 'mdash_user=' + cookieVal + '; path=/';
+                    } catch(e){}
+                    window.location.href = 'admin.php';
                 } else {
                     message.innerHTML = '<strong>Errore:</strong> ' + result.message;
                 }

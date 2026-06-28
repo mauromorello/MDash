@@ -9,13 +9,13 @@ function respond(bool $success, string $message, array $data = []): void {
         'message' => $message,
         'data' => $data,
     ]);
-    exit; 
+    exit;
 }
 
 $dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
-$dbPass = getenv('DB_PASS') ?: ''; 
+$dbPass = getenv('DB_PASS') ?: '';
 
 try {
     $pdo = new PDO(
@@ -31,33 +31,6 @@ try {
     respond(false, 'Impossibile connettersi al database. Verifica i parametri di configurazione.', [
         'error' => $e->getMessage(),
     ]);
-}
-
-$pdo->exec(
-    "
-    CREATE TABLE IF NOT EXISTS users (
-        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(100) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        role VARCHAR(20) NOT NULL DEFAULT 'user',
-        is_active TINYINT(1) NOT NULL DEFAULT 1,
-        first_login_at DATETIME NULL DEFAULT NULL,
-        last_login_at DATETIME NULL DEFAULT NULL,
-        last_login_ip VARCHAR(45) NULL DEFAULT NULL,
-        last_login_agent TEXT NULL DEFAULT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    "
-);
-
-$countStmt = $pdo->query('SELECT COUNT(*) FROM users');
-if ((int) $countStmt->fetchColumn() === 0) {
-    $defaultHash = password_hash('admin123', PASSWORD_DEFAULT);
-    $insertStmt = $pdo->prepare(
-        'INSERT INTO users (username, password_hash, role, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, NOW(), NOW())'
-    );
-    $insertStmt->execute(['admin', $defaultHash, 'admin']);
 }
 
 $action = $_POST['action'] ?? ($_GET['action'] ?? 'login');
@@ -78,7 +51,7 @@ if ($action === 'login') {
         respond(false, 'Credenziali non valide.');
     }
 
-    if ((int) $user['is_active'] !== 1) {
+    if ((int) ($user['is_enabled'] ?? $user['is_active'] ?? 1) !== 1) {
         respond(false, 'L’utente è disattivato.');
     }
 
@@ -93,15 +66,22 @@ if ($action === 'login') {
 
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['username'] = $user['username'];
-    $_SESSION['role'] = $user['role'];
+    $_SESSION['is_admin'] = (int) ($user['is_admin'] ?? 0);
 
+    // return user info and is_admin flag so client can set cookie and redirect
     respond(true, 'Login effettuato con successo.', [
         'user' => [
             'id' => (int) $user['id'],
             'username' => $user['username'],
-            'role' => $user['role'],
+            'is_admin' => (int) ($user['is_admin'] ?? 0),
         ],
     ]);
+}
+
+if ($action === 'logout') {
+    session_destroy();
+    setcookie('mdash_user', '', time() - 3600, '/');
+    respond(true, 'Logout effettuato.');
 }
 
 respond(false, 'Azione non supportata.');
