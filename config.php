@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                     username VARCHAR(100) NOT NULL UNIQUE,
                     password_hash VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) NOT NULL UNIQUE,
                     is_admin TINYINT(1) NOT NULL DEFAULT 0,
                     is_enabled TINYINT(1) NOT NULL DEFAULT 1,
                     is_manager TINYINT(1) NOT NULL DEFAULT 0,
@@ -60,6 +61,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
             );
             $colCheck = $pdo->prepare("SHOW COLUMNS FROM `users` LIKE ?");
+            $colCheck->execute(['email']);
+            if (!$colCheck->fetch()) {
+                // Try to add with a default value, then update to unique.
+                try {
+                    $pdo->exec("ALTER TABLE `users` ADD COLUMN email VARCHAR(255) NOT NULL DEFAULT 'placeholder@example.com'");
+                    $pdo->exec("UPDATE `users` SET email = CONCAT('user_', id, '@example.com') WHERE email = 'placeholder@example.com'");
+                    $pdo->exec("ALTER TABLE `users` ADD UNIQUE (email)");
+                } catch(Exception $e) {
+                    // Fallback for older MySQL versions that might not like the above
+                     $pdo->exec("ALTER TABLE `users` ADD COLUMN email VARCHAR(255) NULL");
+                     $pdo->exec("UPDATE `users` SET email = CONCAT('user_', id, '@example.com') WHERE email IS NULL");
+                     $pdo->exec("ALTER TABLE `users` MODIFY COLUMN email VARCHAR(255) NOT NULL UNIQUE");
+                }
+            }
             $colCheck->execute(['last_login_ip']);
             if (!$colCheck->fetch()) {
                 $pdo->exec("ALTER TABLE `users` ADD COLUMN last_login_ip VARCHAR(45) NULL");
@@ -72,8 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             $stmt->execute(['mimmoz']);
             if ((int)$stmt->fetchColumn() === 0) {
                 $hash = password_hash('zxcasd', PASSWORD_DEFAULT);
-                $ins = $pdo->prepare('INSERT INTO users (username, password_hash, is_admin, is_enabled, created_at, updated_at) VALUES (?, ?, 1, 1, NOW(), NOW())');
-                $ins->execute(['mimmoz', $hash]);
+                $ins = $pdo->prepare('INSERT INTO users (username, password_hash, email, is_admin, is_enabled, created_at, updated_at) VALUES (?, ?, ?, 1, 1, NOW(), NOW())');
+                $ins->execute(['mimmoz', $hash, 'mimmoz@example.com']);
                 $userTableCreateMessage = 'Tabella users creata e utente admin creato.';
             } else {
                 $userTableCreateMessage = 'Tabella users creata (o esistente) e utente admin già presente.';
