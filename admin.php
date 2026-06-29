@@ -60,7 +60,10 @@ if ((int)$me['is_admin'] !== 1) {
             <h4>Crea nuovo utente</h4>
             <form id="createUserForm">
                 <input type="text" id="newUsername" placeholder="Username" required>
-                <input type="password" id="newUserPassword" placeholder="Password" required>
+                <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+                    <input type="password" id="newUserPassword" placeholder="Password" required autocomplete="new-password" style="flex:1; min-width:200px;">
+                    <button type="button" id="generatePasswordBtn">Genera password</button>
+                </div>
                 <label><input type="checkbox" id="newIsAdmin"> Admin</label>
                 <label><input type="checkbox" id="newIsManager"> Manager</label>
                 <label><input type="checkbox" id="newIsEnabled" checked> Abilitato</label>
@@ -164,6 +167,7 @@ if ((int)$me['is_admin'] !== 1) {
                 columns: [
                     {title:'ID', field:'id', width:60, headerSort:false},
                     {title:'Username', field:'username', editor:'input'},
+                    {title:'Password', field:'password', editor:'input', formatter:function(cell){ return ''; }, placeholder:'(nuova password)'},
                     {title:'Admin', field:'is_admin', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
                     {title:'Manager', field:'is_manager', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
                     {title:'Abilitato', field:'is_enabled', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
@@ -189,6 +193,9 @@ if ((int)$me['is_admin'] !== 1) {
                         is_manager: data.is_manager ? 1 : 0,
                         is_enabled: data.is_enabled ? 1 : 0,
                     };
+                    if (data.password && data.password.trim() !== '') {
+                        payload.password = data.password;
+                    }
                     api('update_user', payload).then(res=>{
                         if (!res.success) {
                             alert('Errore aggiornamento: ' + res.message);
@@ -204,7 +211,8 @@ if ((int)$me['is_admin'] !== 1) {
             api('list_users').then(res=>{
                 if(!res.success){ document.getElementById('usersTable').textContent = 'Errore: '+res.message; return; }
                 if (!usersTable) initUsersTable();
-                usersTable.setData(res.data.users);
+                const rows = res.data.users.map(user => ({...user, password: ''}));
+                usersTable.setData(rows);
             });
         }
 
@@ -242,6 +250,25 @@ if ((int)$me['is_admin'] !== 1) {
                     console.error(err);
                 });
         }
+
+        function generatePassword(length = 16) {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+';
+            let password = '';
+            const values = new Uint32Array(length);
+            window.crypto.getRandomValues(values);
+            for (let i = 0; i < length; i++) {
+                password += chars[values[i] % chars.length];
+            }
+            return password;
+        }
+
+        document.getElementById('generatePasswordBtn').addEventListener('click', function(){
+            const passwordInput = document.getElementById('newUserPassword');
+            const generated = generatePassword(16);
+            passwordInput.value = generated;
+            const msgDiv = document.getElementById('createUserMessage');
+            msgDiv.textContent = 'Password generata automaticamente.';
+        });
 
         document.getElementById('logoutBtn').addEventListener('click', function(){
             fetch('_act.php', {method:'POST', body: new URLSearchParams({action:'logout'})}).then(()=>{
