@@ -67,6 +67,7 @@ if ($action === 'login') {
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['username'] = $user['username'];
     $_SESSION['is_admin'] = (int) ($user['is_admin'] ?? 0);
+    $_SESSION['login_time'] = $now;
 
     // return user info and is_admin flag so client can set cookie and redirect
     respond(true, 'Login effettuato con successo.', [
@@ -74,6 +75,7 @@ if ($action === 'login') {
             'id' => (int) $user['id'],
             'username' => $user['username'],
             'is_admin' => (int) ($user['is_admin'] ?? 0),
+            'login_time' => $now,
         ],
     ]);
 }
