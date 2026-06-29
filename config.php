@@ -52,6 +52,25 @@ $serverInfo['Max Execution Time'] = ini_get('max_execution_time');
 $serverInfo['Memory Limit'] = ini_get('memory_limit');
 $serverInfo['Timezone'] = date_default_timezone_get();
 
+$tables = [];
+if ($pdoStatus === 'OK') {
+    try {
+        $stmt = $pdo->query("SHOW TABLES");
+        $tableNames = $stmt->fetchAll(PDO::FETCH_NUM);
+        foreach ($tableNames as $row) {
+            if (empty($row[0])) {
+                continue;
+            }
+            $table = $row[0];
+            $rowsStmt = $pdo->prepare("SELECT * FROM `" . str_replace('`', '', $table) . "` LIMIT 10");
+            $rowsStmt->execute();
+            $tables[$table] = $rowsStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {
+        $tables = ['__error__' => 'Impossibile leggere le tabelle: ' . $e->getMessage()];
+    }
+}
+
 function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
