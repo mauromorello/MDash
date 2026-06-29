@@ -43,11 +43,27 @@ if ((int)$me['is_admin'] !== 1) {
         table td, table th{border:1px solid #ccc;padding:6px}
         .row-actions{white-space:nowrap}
         input.cell-edit{width:100%}
+        #user-management { margin-top: 24px; border-top: 1px solid #ccc; padding-top: 16px; }
+        #createUserForm input { display: block; margin-bottom: 8px; padding: 6px; min-width: 200px; }
     </style>
 </head>
 <body>
     <h2>Admin Console</h2>
     <p>Benvenuto, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>) — <button id="logoutBtn">Logout</button></p>
+
+    <div id="user-management">
+        <h3>Gestione Utenti</h3>
+        <div id="create-user-panel">
+            <h4>Crea nuovo utente</h4>
+            <form id="createUserForm">
+                <input type="text" id="newUsername" placeholder="Username" required>
+                <input type="email" id="newUserEmail" placeholder="Email" required>
+                <input type="password" id="newUserPassword" placeholder="Password" required>
+                <button type="submit">Crea utente</button>
+            </form>
+            <div id="createUserMessage"></div>
+        </div>
+    </div>
 
     <h3>Liste tabelle</h3>
     <div id="tables"></div>
@@ -122,11 +138,44 @@ if ((int)$me['is_admin'] !== 1) {
                         inputs.forEach(inp=>{ data[inp.dataset.col]=inp.value; });
                         api('update_row', {table: table, data: JSON.stringify(data)}).then(res=>{
                             alert(res.message || JSON.stringify(res));
-                            loadRows(table);
+                            loadRows(.table);
                         });
                     });
                 });
             });
+        }
+
+        function createUser(evt) {
+            evt.preventDefault();
+            const username = document.getElementById('newUsername').value;
+            const email = document.getElementById('newUserEmail').value;
+            const password = document.getElementById('newUserPassword').value;
+            const msgDiv = document.getElementById('createUserMessage');
+            msgDiv.textContent = 'Creazione...';
+
+            const fd = new FormData();
+            fd.append('action', 'create_user');
+            fd.append('username', username);
+            fd.append('email', email);
+            fd.append('password', password);
+
+            fetch('_act.php', { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success) {
+                        msgDiv.textContent = 'Utente creato con successo!';
+                        document.getElementById('createUserForm').reset();
+                        if (document.getElementById('tableName').textContent === 'users') {
+                            loadTable('users');
+                        }
+                    } else {
+                        msgDiv.textContent = 'Errore: ' + res.message;
+                    }
+                })
+                .catch(err => {
+                    msgDiv.textContent = 'Errore di comunicazione col server.';
+                    console.error(err);
+                });
         }
 
         document.getElementById('logoutBtn').addEventListener('click', function(){
@@ -138,6 +187,7 @@ if ((int)$me['is_admin'] !== 1) {
 
         // init
         loadTables();
+        document.getElementById('createUserForm').addEventListener('submit', createUser);
     </script>
 </body>
 </html>

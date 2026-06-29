@@ -8,6 +8,7 @@ MDash è un'applicazione web pensata per permettere a un utente di gestire dati 
 - `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 - `username` VARCHAR(100) NOT NULL UNIQUE
 - `password_hash` VARCHAR(255) NOT NULL
+- `email` VARCHAR(255) NOT NULL UNIQUE
 - `is_admin` TINYINT(1) NOT NULL DEFAULT 0
 - `is_enabled` TINYINT(1) NOT NULL DEFAULT 1
 - `is_manager` TINYINT(1) NOT NULL DEFAULT 0
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(100) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
   is_admin TINYINT(1) NOT NULL DEFAULT 0,
   is_enabled TINYINT(1) NOT NULL DEFAULT 1,
   is_manager TINYINT(1) NOT NULL DEFAULT 0,
@@ -97,9 +99,9 @@ La struttura proposta del progetto è la seguente:
 
 - `index.php` — pagina di login principale.
 - `main.php` — pagina principale dopo login.
-- `admin.php` — console amministrativa accessibile solo a utenti con `is_admin = 1`.
+- `admin.php` — console amministrativa accessibile solo a utenti con `is_admin = 1`. Permette ora la creazione di nuovi utenti.
 - `config.php` — helper tecnico protetto da `key=...`, mostra stato DB, tabelle, preview dati e deploy log.
-- `_act.php` — endpoint AJAX per login/logout.
+- `_act.php` — endpoint AJAX per login/logout e creazione utenti.
 - `_act_db.php` — endpoint AJAX per gestione DB e tabelle.
 
 ## Tecnologie suggerite
@@ -121,4 +123,6 @@ Il progetto è ancora in fase di definizione e struttura. Questa README serve co
 - template predefiniti per le dashboard;
 - gestione avanzata di permessi e condivisione;
 - storico delle versioni delle dashboard generate.
+
+rsioni delle dashboard generate.
 

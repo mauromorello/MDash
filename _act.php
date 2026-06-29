@@ -116,4 +116,46 @@ if ($action === 'logout') {
     respond(true, 'Logout effettuato.');
 }
 
+if ($action === 'create_user') {
+    if (empty($_SESSION['is_admin']) || (int)$_SESSION['is_admin'] !== 1) {
+        respond(false, 'Accesso non autorizzato. Devi essere un admin per creare utenti.');
+    }
+
+    $username = trim($_POST['username'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if (empty($username) || empty($email) || empty($password)) {
+        respond(false, 'Tutti i campi (username, email, password) sono obbligatori.');
+    }
+    if (strlen($password) < 8) {
+        respond(false, 'La password deve essere di almeno 8 caratteri.');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(false, 'Formato email non valido.');
+    }
+
+    $stmt = $pdo->prepare('SELECT id FROM users WHERE username = ? OR email = ?');
+    $stmt->execute([$username, $email]);
+    if ($stmt->fetch()) {
+        respond(false, 'Username o email già esistenti.');
+    }
+
+    $password_hash = password_hash($password, PASSWORD_DEFAULT);
+    if ($password_hash === false) {
+        respond(false, 'Errore durante la creazione dell\'hash della password.');
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO users (username, email, password_hash, is_admin, is_enabled, created_at, updated_at) VALUES (?, ?, ?, 0, 1, NOW(), NOW())'
+        );
+        $stmt->execute([$username, $email, $password_hash]);
+        $new_user_id = $pdo->lastInsertId();
+        respond(true, 'Utente creato con successo.', ['new_user_id' => $new_user_id]);
+    } catch (PDOException $e) {
+        respond(false, 'Errore durante la creazione dell\'utente.', ['error' => $e->getMessage()]);
+    }
+}
+
 respond(false, 'Azione non supportata.');
