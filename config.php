@@ -1,5 +1,5 @@
 <?php
-$key = $_GET['key'] ?? '';
+$key = $_GET['key'] ?? $_POST['key'] ?? '';
 $expectedKey = 'lskfdjsdkfjeijrnsdnfmndmf';
 if ($key !== $expectedKey) {
     http_response_code(403);
@@ -14,6 +14,9 @@ $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 $pdoStatus = 'Non testato';
 $pdoError = '';
+$userTableStatus = 'Non verificata';
+$userTableExists = false;
+$userTableCreateMessage = '';
 try {
     $pdo = new PDO("mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4", $dbUser, $dbPass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -23,6 +26,53 @@ try {
 } catch (Exception $e) {
     $pdoStatus = 'Errore';
     $pdoError = $e->getMessage();
+}
+
+if ($pdoStatus === 'OK') {
+    try {
+        $stmt = $pdo->query("SHOW TABLES LIKE 'users'");
+        $userTableExists = (bool)$stmt->fetchColumn();
+        $userTableStatus = $userTableExists ? 'Esiste' : 'Non esiste';
+    } catch (Exception $e) {
+        $userTableStatus = 'Errore verifica: ' . $e->getMessage();
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_users_table') {
+    if ($pdoStatus !== 'OK') {
+        $userTableCreateMessage = 'Impossibile creare la tabella perché il DB non è accessibile: ' . $pdoError;
+    } else {
+        try {
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS users (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(100) NOT NULL UNIQUE,
+                    password_hash VARCHAR(255) NOT NULL,
+                    is_admin TINYINT(1) NOT NULL DEFAULT 0,
+                    is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+                    is_manager TINYINT(1) NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    first_login_at DATETIME NULL,
+                    last_login_at DATETIME NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = ?');
+            $stmt->execute(['mimmoz']);
+            if ((int)$stmt->fetchColumn() === 0) {
+                $hash = password_hash('zxcasd', PASSWORD_DEFAULT);
+                $ins = $pdo->prepare('INSERT INTO users (username, password_hash, is_admin, is_enabled, created_at, updated_at) VALUES (?, ?, 1, 1, NOW(), NOW())');
+                $ins->execute(['mimmoz', $hash]);
+                $userTableCreateMessage = 'Tabella users creata e utente admin creato.';
+            } else {
+                $userTableCreateMessage = 'Tabella users creata (o esistente) e utente admin già presente.';
+            }
+            $userTableExists = true;
+            $userTableStatus = 'Esiste';
+        } catch (Exception $e) {
+            $userTableCreateMessage = 'Errore creazione tabella users: ' . $e->getMessage();
+        }
+    }
 }
 
 $apacheStatus = 'Non disponibile';
@@ -53,6 +103,7 @@ $serverInfo['Memory Limit'] = ini_get('memory_limit');
 $serverInfo['Timezone'] = date_default_timezone_get();
 
 $tables = [];
+$tableColumns = [];
 if ($pdoStatus === 'OK') {
     try {
         $stmt = $pdo->query("SHOW TABLES");
@@ -65,10 +116,21 @@ if ($pdoStatus === 'OK') {
             $rowsStmt = $pdo->prepare("SELECT * FROM `" . str_replace('`', '', $table) . "` LIMIT 10");
             $rowsStmt->execute();
             $tables[$table] = $rowsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $colsStmt = $pdo->prepare("SHOW COLUMNS FROM `" . str_replace('`', '', $table) . "`");
+            $colsStmt->execute();
+            $tableColumns[$table] = $colsStmt->fetchAll(PDO::FETCH_ASSOC);
         }
     } catch (Exception $e) {
         $tables = ['__error__' => 'Impossibile leggere le tabelle: ' . $e->getMessage()];
     }
+}
+
+$deployLogPath = __DIR__ . '/deploy_log.txt';
+$deployLogLines = [];
+if (is_readable($deployLogPath)) {
+    $allLines = file($deployLogPath, FILE_IGNORE_NEW_LINES);
+    $deployLogLines = array_slice($allLines, max(0, count($allLines) - 300));
 }
 
 function h($value) {
@@ -90,6 +152,7 @@ function h($value) {
         .status-error { color: darkred; font-weight: bold; }
         .panel { margin-bottom: 20px; }
         .panel h2 { margin-bottom: 8px; }
+        .log-box { background:#111; color:#eee; padding:12px; max-height:300px; overflow:auto; white-space:pre-wrap; font-family:Menlo, Monaco, monospace; border:1px solid #333; }
     </style>
 </head>
 <body>
@@ -107,6 +170,21 @@ function h($value) {
             <tr><th>PDO status</th><td><?php echo h($pdoStatus); ?></td></tr>
             <?php if ($pdoError): ?><tr><th>Errore connessione</th><td><code><?php echo h($pdoError); ?></code></td></tr><?php endif; ?>
         </table>
+    </div>
+
+    <div class="panel">
+        <h2>Tabella utenti</h2>
+        <table>
+            <tr><th>Stato tabella <code>users</code></th><td><?php echo h($userTableStatus); ?></td></tr>
+        </table>
+        <form method="post" style="margin-top:10px;">
+            <input type="hidden" name="key" value="<?php echo h($key); ?>">
+            <input type="hidden" name="action" value="create_users_table">
+            <button type="submit">Crea tabella users e primo admin</button>
+        </form>
+        <?php if ($userTableCreateMessage): ?>
+            <p><?php echo h($userTableCreateMessage); ?></p>
+        <?php endif; ?>
     </div>
 
     <div class="panel">
@@ -128,6 +206,74 @@ function h($value) {
             <tr><th>Server software</th><td><?php echo h($_SERVER['SERVER_SOFTWARE'] ?? 'N/A'); ?></td></tr>
             <tr><th>PHP ini file</th><td><?php echo h(php_ini_loaded_file() ?: 'N/A'); ?></td></tr>
         </table>
+    </div>
+
+    <div class="panel">
+        <h2>Liste tabelle e prime 10 righe</h2>
+        <?php if (isset($tables['__error__'])): ?>
+            <p class="status-error"><?php echo h($tables['__error__']); ?></p>
+        <?php elseif (empty($tables)): ?>
+            <p>Nessuna tabella trovata o DB non accessibile.</p>
+        <?php else: ?>
+            <?php foreach ($tables as $tableName => $rows): ?>
+                <h3><?php echo h($tableName); ?></h3>
+                <?php if (!empty($tableColumns[$tableName])): ?>
+                    <div style="margin-bottom:12px;">
+                        <strong>Campi e tipi:</strong>
+                        <table>
+                            <thead>
+                                <tr><th>Campo</th><th>Tipo</th></tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($tableColumns[$tableName] as $col): ?>
+                                    <tr>
+                                        <td><?php echo h($col['Field']); ?></td>
+                                        <td><?php echo h($col['Type']); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <p>Impossibile leggere i campi della tabella.</p>
+                <?php endif; ?>
+                <?php if (empty($rows)): ?>
+                    <p>Nessuna riga presente.</p>
+                <?php else: ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <?php foreach (array_keys($rows[0]) as $col): ?>
+                                    <th><?php echo h($col); ?></th>
+                                <?php endforeach; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($rows as $row): ?>
+                                <tr>
+                                    <?php foreach ($row as $value): ?>
+                                        <td><?php echo h($value); ?></td>
+                                    <?php endforeach; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+
+    <div class="panel">
+        <h2>Log deploy</h2>
+        <div class="log-box">
+            <?php if (empty($deployLogLines)): ?>
+                <p>Nessun file deploy_log.txt trovato o file vuoto.</p>
+            <?php else: ?>
+                <?php foreach ($deployLogLines as $line): ?>
+                    <?php echo h($line); ?><br>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
     </div>
 </body>
 </html>

@@ -39,13 +39,6 @@ if ((int)$me['is_admin'] !== 1) {
     <h2>Admin Console</h2>
     <p>Benvenuto, utente id <?php echo htmlspecialchars($me['id']); ?> — <button id="logoutBtn">Logout</button></p>
 
-    <h3>Crea database e tabella utenti</h3>
-    <div>
-        <input id="dbName" placeholder="Nome DB (opzionale)" />
-        <button id="createDb">Crea DB</button>
-        <div id="createDbMsg"></div>
-    </div>
-
     <h3>Liste tabelle</h3>
     <div id="tables"></div>
 
@@ -61,15 +54,6 @@ if ((int)$me['is_admin'] !== 1) {
             for(const k in body) fd.append(k, body[k]);
             return fetch('_act_db.php', {method:'POST', body: fd}).then(r=>r.json());
         }
-
-        document.getElementById('createDb').addEventListener('click', function(){
-            const name = document.getElementById('dbName').value || '';
-            document.getElementById('createDbMsg').innerText = 'Creazione...';
-            api('create_db', {db_name: name}).then(res=>{
-                document.getElementById('createDbMsg').innerText = res.message || JSON.stringify(res);
-                loadTables();
-            }).catch(e=>{document.getElementById('createDbMsg').innerText = 'Errore';});
-        });
 
         function loadTables(){
             const cont = document.getElementById('tables');
