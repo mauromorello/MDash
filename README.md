@@ -2,6 +2,41 @@
 
 MDash è un'applicazione web pensata per permettere a un utente di gestire dati tabellari, generare dashboard interattive tramite prompt e condividere i risultati in modo semplice.
 
+## Schema database principale
+
+### Tabella `users`
+- `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+- `username` VARCHAR(100) NOT NULL UNIQUE
+- `password_hash` VARCHAR(255) NOT NULL
+- `is_admin` TINYINT(1) NOT NULL DEFAULT 0
+- `is_enabled` TINYINT(1) NOT NULL DEFAULT 1
+- `is_manager` TINYINT(1) NOT NULL DEFAULT 0
+- `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+- `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+- `first_login_at` DATETIME NULL
+- `last_login_at` DATETIME NULL
+- `last_login_ip` VARCHAR(45) NULL
+- `last_login_agent` TEXT NULL
+
+Esempio di creazione SQL:
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  is_admin TINYINT(1) NOT NULL DEFAULT 0,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  is_manager TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  first_login_at DATETIME NULL,
+  last_login_at DATETIME NULL,
+  last_login_ip VARCHAR(45) NULL,
+  last_login_agent TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
 ## Obiettivo del progetto
 
 L'applicazione deve consentire di:
@@ -57,6 +92,15 @@ La struttura proposta del progetto è la seguente:
 - /src o /app: logica applicativa, controller, servizi e gestione dei dati;
 - /public: entry point dell'applicazione, come index.php e asset statici;
 - /config: configurazione dell'applicazione e delle connessioni ai servizi esterni.
+
+## Pagine attuali
+
+- `index.php` — pagina di login principale.
+- `main.php` — pagina principale dopo login.
+- `admin.php` — console amministrativa accessibile solo a utenti con `is_admin = 1`.
+- `config.php` — helper tecnico protetto da `key=...`, mostra stato DB, tabelle, preview dati e deploy log.
+- `_act.php` — endpoint AJAX per login/logout.
+- `_act_db.php` — endpoint AJAX per gestione DB e tabelle.
 
 ## Tecnologie suggerite
 

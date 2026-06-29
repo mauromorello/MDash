@@ -3,11 +3,21 @@
 session_start();
 
 function getUserFromCookie(){
-    if (!empty($_SESSION['user_id'])) return ['id'=>$_SESSION['user_id'],'is_admin'=>$_SESSION['is_admin']??0];
+    if (!empty($_SESSION['user_id'])) {
+        return [
+            'id' => $_SESSION['user_id'],
+            'username' => $_SESSION['username'] ?? 'utente',
+            'is_admin' => $_SESSION['is_admin'] ?? 0,
+        ];
+    }
     if (empty($_COOKIE['mdash_user'])) return null;
     $u = json_decode(urldecode($_COOKIE['mdash_user']), true);
     if (!is_array($u) || empty($u['id'])) return null;
-    return ['id'=> (int)$u['id'], 'is_admin'=> (int)($u['is_admin'] ?? 0)];
+    return [
+        'id' => (int)$u['id'],
+        'username' => $u['username'] ?? 'utente',
+        'is_admin' => (int)($u['is_admin'] ?? 0),
+    ];
 }
 
 $me = getUserFromCookie();
@@ -37,7 +47,7 @@ if ((int)$me['is_admin'] !== 1) {
 </head>
 <body>
     <h2>Admin Console</h2>
-    <p>Benvenuto, utente id <?php echo htmlspecialchars($me['id']); ?> — <button id="logoutBtn">Logout</button></p>
+    <p>Benvenuto, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>) — <button id="logoutBtn">Logout</button></p>
 
     <h3>Liste tabelle</h3>
     <div id="tables"></div>

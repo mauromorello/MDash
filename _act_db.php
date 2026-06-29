@@ -60,9 +60,20 @@ if ($action === 'create_db') {
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 first_login_at DATETIME NULL,
-                last_login_at DATETIME NULL
+                last_login_at DATETIME NULL,
+                last_login_ip VARCHAR(45) NULL,
+                last_login_agent TEXT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
+        $colCheck = $pdo->prepare("SHOW COLUMNS FROM `users` LIKE ?");
+        $colCheck->execute(['last_login_ip']);
+        if (!$colCheck->fetch()) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN last_login_ip VARCHAR(45) NULL");
+        }
+        $colCheck->execute(['last_login_agent']);
+        if (!$colCheck->fetch()) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN last_login_agent TEXT NULL");
+        }
 
         // create admin user mimmoz / zxcasd
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username = ?');

@@ -63,10 +63,36 @@ if ($action === 'login') {
     $ip = $_SERVER['REMOTE_ADDR'] ?? null;
     $agent = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 1000);
 
-    $updateStmt = $pdo->prepare(
-        'UPDATE users SET first_login_at = COALESCE(first_login_at, ?), last_login_at = ?, last_login_ip = ?, last_login_agent = ?, updated_at = ? WHERE id = ?'
-    );
-    $updateStmt->execute([$now, $now, $ip, $agent, $now, $user['id']]);
+    $columns = [];
+    try {
+        $colsStmt = $pdo->query("SHOW COLUMNS FROM `users`");
+        while ($col = $colsStmt->fetch(PDO::FETCH_ASSOC)) {
+            $columns[] = $col['Field'];
+        }
+    } catch (Exception $e) {
+        $columns = [];
+    }
+
+    $updatePieces = [
+        'first_login_at = COALESCE(first_login_at, ?)',
+        'last_login_at = ?',
+        'updated_at = ?',
+    ];
+    $params = [$now, $now, $now];
+
+    if (in_array('last_login_ip', $columns, true)) {
+        $updatePieces[] = 'last_login_ip = ?';
+        $params[] = $ip;
+    }
+
+    if (in_array('last_login_agent', $columns, true)) {
+        $updatePieces[] = 'last_login_agent = ?';
+        $params[] = $agent;
+    }
+
+    $params[] = $user['id'];
+    $updateStmt = $pdo->prepare('UPDATE users SET ' . implode(', ', $updatePieces) . ' WHERE id = ?');
+    $updateStmt->execute($params);
 
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['username'] = $user['username'];

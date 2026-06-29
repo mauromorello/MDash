@@ -7,6 +7,7 @@ function getUserFromSessionOrCookie() {
             'id' => $_SESSION['user_id'],
             'username' => $_SESSION['username'],
             'login_time' => $_SESSION['login_time'] ?? null,
+            'is_admin' => $_SESSION['is_admin'] ?? 0,
         ];
     }
 
@@ -17,6 +18,7 @@ function getUserFromSessionOrCookie() {
                 'id' => (int)$user['id'],
                 'username' => $user['username'] ?? 'utente',
                 'login_time' => $user['login_time'] ?? null,
+                'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
         }
     }
@@ -55,6 +57,9 @@ function h($value) {
             <div class="brand">MDash</div>
             <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         </div>
+        <?php if (!empty($user['is_admin'])): ?>
+            <div><a href="admin.php" style="color:#fff; text-decoration:none; margin-left:20px;">Admin Console</a></div>
+        <?php endif; ?>
         <button id="logoutBtn">Logout</button>
     </div>
     <div class="main-content">
