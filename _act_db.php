@@ -95,6 +95,11 @@ if (!$user) {
     respond(false, 'Non autenticato.', ['code' => 401]);
 }
 
+$adminOnlyActions = ['list_users','create_user','update_user','delete_user'];
+if (in_array($action, $adminOnlyActions, true) && empty($user['is_admin'])) {
+    respond(false, 'Non autorizzato.', ['code' => 403]);
+}
+
 if ($action === 'list_tables') {
     $stmt = $pdo->query("SHOW TABLES");
     $tables = [];
@@ -102,6 +107,95 @@ if ($action === 'list_tables') {
         $tables[] = $r[0];
     }
     respond(true, 'Tabelle trovate.', ['tables'=>$tables]);
+}
+
+if ($action === 'list_users') {
+    $stmt = $pdo->query('SELECT id, username, is_admin, is_enabled, is_manager, created_at, updated_at FROM users ORDER BY id ASC');
+    $users = $stmt->fetchAll();
+    respond(true, 'Utenti trovati.', ['users' => $users]);
+}
+
+if ($action === 'create_user') {
+    $username = trim((string)($_POST['username'] ?? ''));
+    $password = (string)($_POST['password'] ?? '');
+    $isAdmin = (int)($_POST['is_admin'] ?? 0);
+    $isEnabled = (int)($_POST['is_enabled'] ?? 1);
+    $isManager = (int)($_POST['is_manager'] ?? 0);
+
+    if ($username === '' || $password === '') {
+        respond(false, 'Username e password sono obbligatori.');
+    }
+
+    try {
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, is_admin, is_enabled, is_manager, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())');
+        $stmt->execute([$username, $hash, $isAdmin, $isEnabled, $isManager]);
+        respond(true, 'Utente creato.', ['id' => (int)$pdo->lastInsertId()]);
+    } catch (Exception $e) {
+        respond(false, 'Errore creazione utente: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'update_user') {
+    $id = (int)($_POST['id'] ?? 0);
+    $username = trim((string)($_POST['username'] ?? ''));
+    $password = (string)($_POST['password'] ?? '');
+    $isAdmin = isset($_POST['is_admin']) ? (int)$_POST['is_admin'] : null;
+    $isEnabled = isset($_POST['is_enabled']) ? (int)$_POST['is_enabled'] : null;
+    $isManager = isset($_POST['is_manager']) ? (int)$_POST['is_manager'] : null;
+
+    if ($id <= 0) {
+        respond(false, 'ID utente non valido.');
+    }
+    $fields = [];
+    $params = [];
+    if ($username !== '') {
+        $fields[] = 'username = ?';
+        $params[] = $username;
+    }
+    if ($password !== '') {
+        $fields[] = 'password_hash = ?';
+        $params[] = password_hash($password, PASSWORD_DEFAULT);
+    }
+    if ($isAdmin !== null) {
+        $fields[] = 'is_admin = ?';
+        $params[] = $isAdmin;
+    }
+    if ($isEnabled !== null) {
+        $fields[] = 'is_enabled = ?';
+        $params[] = $isEnabled;
+    }
+    if ($isManager !== null) {
+        $fields[] = 'is_manager = ?';
+        $params[] = $isManager;
+    }
+
+    if (empty($fields)) {
+        respond(false, 'Nessun campo da aggiornare.');
+    }
+    $params[] = $id;
+    $sql = 'UPDATE users SET ' . implode(', ', $fields) . ', updated_at = NOW() WHERE id = ?';
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        respond(true, 'Utente aggiornato.');
+    } catch (Exception $e) {
+        respond(false, 'Errore aggiornamento utente: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'delete_user') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        respond(false, 'ID utente non valido.');
+    }
+    try {
+        $stmt = $pdo->prepare('DELETE FROM users WHERE id = ?');
+        $stmt->execute([$id]);
+        respond(true, 'Utente eliminato.');
+    } catch (Exception $e) {
+        respond(false, 'Errore eliminazione utente: ' . $e->getMessage());
+    }
 }
 
 if ($action === 'get_schema') {
