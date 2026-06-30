@@ -53,7 +53,7 @@ $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 $pdo = null;
 $dbError = '';
-$uploadId = 0;
+$uploadId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $step = 'upload';
 $message = '';
 $record = null;
@@ -86,6 +86,14 @@ try {
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+
+    $tableExists = $pdo->query("SHOW TABLES LIKE 'uploads'")->fetchColumn();
+    if ($tableExists) {
+        $idColumn = $pdo->query("SHOW COLUMNS FROM uploads LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
+        if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
+            $pdo->exec("ALTER TABLE uploads MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+        }
+    }
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
 }
@@ -107,43 +115,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mkdir($uploadDir, 0777, true);
             }
 
-            $stmt = $pdo->prepare(
-                'INSERT INTO uploads (path, filename, description, tags, long_description, prompt_1, prompt_2, id_owner, is_public, AI_1, AI_2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' 
-            );
-            $stmt->execute([
-                '',
-                $fileName,
-                '',
-                '',
-                '',
-                '',
-                '',
-                (int)$user['id'],
-                0,
-                '',
-                '',
-            ]);
+            try {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO uploads (path, filename, description, tags, long_description, prompt_1, prompt_2, id_owner, is_public, AI_1, AI_2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' 
+                );
+                $stmt->execute([
+                    '',
+                    $fileName,
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    (int)$user['id'],
+                    0,
+                    '',
+                    '',
+                ]);
 
-            $uploadId = (int)$pdo->lastInsertId();
-            $recordDir = $uploadDir . DIRECTORY_SEPARATOR . $uploadId;
-            if (!is_dir($recordDir)) {
-                mkdir($recordDir, 0777, true);
-            }
-
-            $targetPath = $recordDir . DIRECTORY_SEPARATOR . $fileName;
-            if (move_uploaded_file($_FILES['file']['tmp_name'], $targetPath)) {
-                $relativePath = 'uploads/' . $uploadId . '/' . $fileName;
-                $updateStmt = $pdo->prepare('UPDATE uploads SET path = ? WHERE id = ?');
-                $updateStmt->execute([$relativePath, $uploadId]);
-                $step = 'finalize';
-                $message = 'File caricato correttamente. Completa i campi richiesti.';
-                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-                    sendJson(true, $message, $uploadId);
+                $uploadId = (int)$pdo->lastInsertId();
+                $recordDir = $uploadDir . DIRECTORY_SEPARATOR . $uploadId;
+                if (!is_dir($recordDir)) {
+                    mkdir($recordDir, 0777, true);
                 }
-            } else {
-                $deleteStmt = $pdo->prepare('DELETE FROM uploads WHERE id = ?');
-                $deleteStmt->execute([$uploadId]);
-                $message = 'Il file non è stato salvato. Riprova.';
+
+                $targetPath = $recordDir . DIRECTORY_SEPARATOR . $fileName;
+                if (move_uploaded_file($_FILES['file']['tmp_name'], $targetPath)) {
+                    $relativePath = 'uploads/' . $uploadId . '/' . $fileName;
+                    $updateStmt = $pdo->prepare('UPDATE uploads SET path = ? WHERE id = ?');
+                    $updateStmt->execute([$relativePath, $uploadId]);
+                    $step = 'finalize';
+                    $message = 'File caricato correttamente. Completa i campi richiesti.';
+                    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                        sendJson(true, $message, $uploadId);
+                    }
+                } else {
+                    $deleteStmt = $pdo->prepare('DELETE FROM uploads WHERE id = ?');
+                    $deleteStmt->execute([$uploadId]);
+                    $message = 'Il file non è stato salvato. Riprova.';
+                    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                        sendJson(false, $message);
+                    }
+                }
+            } catch (PDOException $e) {
+                $message = 'Errore durante il salvataggio del file: ' . $e->getMessage();
                 if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                     sendJson(false, $message);
                 }
