@@ -41,6 +41,7 @@ $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 $pdo = null;
 $uploads = [];
+$message = '';
 
 try {
     $pdo = new PDO(
@@ -77,6 +78,39 @@ try {
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_upload' && $pdo) {
+    $uploadId = (int)($_POST['id'] ?? 0);
+    if ($uploadId > 0) {
+        $stmt = $pdo->prepare('SELECT id_owner, filename, path FROM uploads WHERE id = ? AND id_owner = ? LIMIT 1');
+        $stmt->execute([$uploadId, (int)$user['id']]);
+        $uploadRow = $stmt->fetch();
+
+        if ($uploadRow) {
+            $filePath = __DIR__ . DIRECTORY_SEPARATOR . ltrim((string)$uploadRow['path'], '/\\');
+            $baseDir = dirname($filePath);
+            $uploadDir = dirname($baseDir);
+
+            $deleteStmt = $pdo->prepare('DELETE FROM uploads WHERE id = ? AND id_owner = ?');
+            $deleteStmt->execute([$uploadId, (int)$user['id']]);
+
+            if (is_file($filePath)) {
+                @unlink($filePath);
+            }
+            if (is_dir($baseDir)) {
+                @rmdir($baseDir);
+            }
+            if (is_dir($uploadDir) && $uploadDir === __DIR__ . DIRECTORY_SEPARATOR . 'uploads' && count(scandir($uploadDir)) <= 2) {
+                @rmdir($uploadDir);
+            }
+
+            $message = 'Upload eliminato correttamente.';
+            header('Location: database_list.php?deleted=1');
+            exit;
+        }
+    }
+    $message = 'Impossibile eliminare l\'upload.';
+}
 ?>
 <!DOCTYPE html>
 <html lang="it">
@@ -106,6 +140,10 @@ try {
             </div>
             <a href="main.php">Torna alla home</a>
         </div>
+
+        <?php if ($message): ?>
+            <p class="message"><?php echo h($message); ?></p>
+        <?php endif; ?>
 
         <?php if (!empty($error)): ?>
             <p class="message error">Errore di accesso al database: <?php echo h($error); ?></p>
@@ -149,7 +187,14 @@ try {
                                 <td><?php echo h($row['path'] ?: '-'); ?></td>
                                 <td>
                                     <?php if ((int)$row['id_owner'] === (int)$user['id']): ?>
-                                        <a href="edit_upload.php?id=<?php echo h($row['id']); ?>">Modifica</a>
+                                        <div style="display:flex; flex-direction:column; gap:6px;">
+                                            <a href="edit_upload.php?id=<?php echo h($row['id']); ?>">Modifica</a>
+                                            <form method="post" onsubmit="return confirm('Eliminare questo upload, il file e la directory associati?');">
+                                                <input type="hidden" name="action" value="delete_upload">
+                                                <input type="hidden" name="id" value="<?php echo h($row['id']); ?>">
+                                                <button type="submit" style="padding:6px 10px; font-size:0.9rem;">Elimina</button>
+                                            </form>
+                                        </div>
                                     <?php else: ?>
                                         -
                                     <?php endif; ?>
