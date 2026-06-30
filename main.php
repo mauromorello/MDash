@@ -42,8 +42,8 @@ function h($value) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main</title>
+    <link rel="stylesheet" href="assets/app.css">
     <style>
-        body { margin: 0; font-family: Arial, sans-serif; }
         .topbar { background: #222; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
         .topbar .brand { font-size: 1rem; font-weight: bold; }
         .topbar .info { font-size: 0.95rem; }
@@ -63,8 +63,16 @@ function h($value) {
         <button id="logoutBtn">Logout</button>
     </div>
     <div class="main-content">
-        <h1>Benvenuto</h1>
-        <p>Questa è la pagina principale.</p>
+        <div class="page" style="margin:0; padding:24px; box-shadow:none;">
+            <h1>Benvenuto</h1>
+            <p>Seleziona una delle azioni disponibili per iniziare.</p>
+            <div class="grid" style="margin-top:24px;">
+                <a href="upload.php" class="btn btn-primary">1) Upload</a>
+                <a href="database_list.php" class="btn btn-secondary">2) Elenco basi dati</a>
+                <a href="dashboard_builder.php" class="btn btn-accent">3) Dashboard builder</a>
+                <a href="dashboards.php" class="btn btn-warning">4) Elenco dashboard</a>
+            </div>
+        </div>
     </div>
 
     <script>
