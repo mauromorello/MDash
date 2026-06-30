@@ -119,6 +119,8 @@ a:hover { text-decoration: underline; }
 .btn-accent { background: var(--accent); }
 .btn-warning { background: var(--warning); }
 
+.btn-danger { background: var(--danger); }
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -177,6 +179,56 @@ button {
   font-size: 1rem;
 }
 button.secondary { background: #64748b; }
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inline-actions a,
+.inline-actions button {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.inline-actions a {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+}
+
+.inline-actions a:hover {
+  text-decoration: none;
+  opacity: 0.95;
+}
+
+.inline-actions button {
+  border: 0;
+}
+
+.preview-row {
+  display: none;
+}
+
+.preview-panel {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.preview-panel h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.preview-panel p {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+}
 
 .message {
   padding: 12px 14px;
