@@ -180,6 +180,7 @@ if (!empty($_GET['created'])) {
                                 <td><?php echo h($dashboard['id_template']); ?></td>
                                 <td>
                                     <div class="inline-actions">
+                                        <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Genera prompt</a>
                                         <button type="button" class="secondary preview-toggle" data-target="preview-<?php echo h($dashboard['id']); ?>">Preview prompt</button>
                                         <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Modifica</a>
                                         <form method="post" onsubmit="return confirm('Eliminare questa dashboard?');" style="display:inline;">
