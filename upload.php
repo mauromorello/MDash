@@ -254,7 +254,7 @@ if ($record) {
         </div>
 
         <?php if ($message): ?>
-            <div class="message<?php echo $dbError ? ' error' : ''; ?>"><?php echo h($message); ?></div>
+            <div class="message error"><?php echo h($message); ?></div>
         <?php endif; ?>
 
         <?php if ($step === 'upload'): ?>
@@ -364,15 +364,23 @@ if ($record) {
                                 window.location.reload();
                             }
                         } catch (e) {
-                            window.location.reload();
+                            progressLabel.textContent = 'Risposta non valida dal server.';
+                            progressText.textContent = 'Errore';
                         }
                     } else {
-                        progressLabel.textContent = 'Errore durante l\'upload.';
+                        let serverMessage = 'Errore durante l\'upload.';
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            if (result && result.message) {
+                                serverMessage = result.message;
+                            }
+                        } catch (e) {}
+                        progressLabel.textContent = serverMessage;
                         progressText.textContent = 'Errore';
                     }
                 });
                 xhr.addEventListener('error', function () {
-                    progressLabel.textContent = 'Errore durante l\'upload.';
+                    progressLabel.textContent = 'Errore di rete durante l\'upload.';
                     progressText.textContent = 'Errore';
                 });
 
