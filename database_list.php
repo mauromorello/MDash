@@ -112,6 +112,7 @@ try {
                             <th>Tag</th>
                             <th>Visibilità</th>
                             <th>Percorso</th>
+                            <th>Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -135,6 +136,13 @@ try {
                                 <td><?php echo h($row['tags'] ?: '-'); ?></td>
                                 <td><span class="pill"><?php echo ((int)$row['is_public'] === 1) ? 'Pubblico' : 'Privato'; ?></span></td>
                                 <td><?php echo h($row['path'] ?: '-'); ?></td>
+                                <td>
+                                    <?php if ((int)$row['id_owner'] === (int)$user['id']): ?>
+                                        <a href="edit_upload.php?id=<?php echo h($row['id']); ?>">Modifica</a>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
