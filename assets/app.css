@@ -40,6 +40,45 @@ a:hover { text-decoration: underline; }
   gap: 12px;
 }
 
+.user-ribbon {
+  background: #111827;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.user-ribbon .brand {
+  font-weight: 700;
+}
+
+.user-ribbon .info {
+  color: #d1d5db;
+  font-size: 0.95rem;
+}
+
+.user-ribbon .actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-ribbon .actions a {
+  color: #fff;
+}
+
+.user-ribbon .actions button {
+  background: #e53935;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .topbar h1 {
   margin: 0;
   font-size: 1.5rem;
@@ -147,6 +186,34 @@ button.secondary { background: #64748b; }
   color: #1d4ed8;
 }
 .message.error { background: #fef2f2; color: #b91c1c; }
+
+.progress-box {
+  display: none;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.progress-track {
+  width: 100%;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+  height: 10px;
+  margin-top: 8px;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--primary);
+  transition: width 0.2s ease;
+}
+.progress-text {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
 
 @media (max-width: 700px) {
   .form-grid { grid-template-columns: 1fr; }

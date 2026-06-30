@@ -1,6 +1,16 @@
 <?php
 session_start();
 
+function sendJson($success, $message, $uploadId = 0): void {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => $success,
+        'message' => $message,
+        'upload_id' => $uploadId,
+    ]);
+    exit;
+}
+
 function getUserFromSessionOrCookie() {
     if (!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) {
         return [
@@ -127,10 +137,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateStmt->execute([$relativePath, $uploadId]);
                 $step = 'finalize';
                 $message = 'File caricato correttamente. Completa i campi richiesti.';
+                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                    sendJson(true, $message, $uploadId);
+                }
             } else {
                 $deleteStmt = $pdo->prepare('DELETE FROM uploads WHERE id = ?');
                 $deleteStmt->execute([$uploadId]);
                 $message = 'Il file non è stato salvato. Riprova.';
+                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                    sendJson(false, $message);
+                }
             }
         }
     }
@@ -183,6 +199,7 @@ if ($record) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload file</title>
+    <link rel="stylesheet" href="assets/app.css">
     <style>
         body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; color: #222; }
         .wrap { max-width: 900px; margin: 32px auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
@@ -204,6 +221,17 @@ if ($record) {
     </style>
 </head>
 <body>
+    <div class="user-ribbon">
+        <div class="brand">MDash</div>
+        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="actions">
+            <?php if (!empty($user['is_admin'])): ?>
+                <a href="admin.php">Admin Console</a>
+            <?php endif; ?>
+            <button id="logoutBtn" type="button">Logout</button>
+        </div>
+    </div>
+
     <div class="wrap">
         <div class="topbar">
             <h1>Carica un file</h1>
@@ -216,12 +244,17 @@ if ($record) {
 
         <?php if ($step === 'upload'): ?>
             <div class="box">
-                <form method="post" enctype="multipart/form-data">
+                <form id="uploadForm" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="upload_file">
                     <div class="field">
                         <label for="file">Seleziona file</label>
                         <input type="file" id="file" name="file" required>
                         <div class="hint">Il file verrà salvato nella cartella uploads/id/filename.csv.</div>
+                    </div>
+                    <div id="progressBox" class="progress-box">
+                        <div id="progressLabel">Upload in corso...</div>
+                        <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+                        <div id="progressText" class="progress-text">0%</div>
                     </div>
                     <button type="submit">Carica file</button>
                 </form>
@@ -275,5 +308,78 @@ if ($record) {
             </div>
         <?php endif; ?>
     </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const progressBox = document.getElementById('progressBox');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressLabel = document.getElementById('progressLabel');
+
+        if (form) {
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                const fileInput = document.getElementById('file');
+                if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+                    return;
+                }
+
+                progressBox.style.display = 'block';
+                progressFill.style.width = '0%';
+                progressText.textContent = '0%';
+                progressLabel.textContent = 'Upload in corso...';
+
+                const xhr = new XMLHttpRequest();
+                xhr.upload.addEventListener('progress', function (e) {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        progressFill.style.width = percent + '%';
+                        progressText.textContent = percent + '%';
+                    }
+                });
+                xhr.addEventListener('load', function () {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            if (result && result.success && result.upload_id) {
+                                window.location.href = 'upload.php?id=' + result.upload_id;
+                            } else {
+                                progressLabel.textContent = result && result.message ? result.message : 'Upload completato.';
+                                progressText.textContent = 'Fine';
+                                window.location.reload();
+                            }
+                        } catch (e) {
+                            window.location.reload();
+                        }
+                    } else {
+                        progressLabel.textContent = 'Errore durante l\'upload.';
+                        progressText.textContent = 'Errore';
+                    }
+                });
+                xhr.addEventListener('error', function () {
+                    progressLabel.textContent = 'Errore durante l\'upload.';
+                    progressText.textContent = 'Errore';
+                });
+
+                const formData = new FormData(form);
+                xhr.open('POST', window.location.href);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.send(formData);
+            });
+        }
+
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', function () {
+                fetch('_act.php', {
+                    method: 'POST',
+                    body: new URLSearchParams({ action: 'logout' })
+                }).finally(() => {
+                    document.cookie = 'mdash_user=; path=/; max-age=0';
+                    window.location.href = 'index.php';
+                });
+            });
+        }
+    </script>
 </body>
 </html>

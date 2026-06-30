@@ -39,6 +39,17 @@ if (!$user) {
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
+    <div class="user-ribbon">
+        <div class="brand">MDash</div>
+        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="actions">
+            <?php if (!empty($user['is_admin'])): ?>
+                <a href="admin.php">Admin Console</a>
+            <?php endif; ?>
+            <button id="logoutBtn" type="button">Logout</button>
+        </div>
+    </div>
+
     <div class="page">
         <div class="topbar">
             <div>
@@ -52,5 +63,19 @@ if (!$user) {
             <p>Al momento non sono presenti dashboard.</p>
         </div>
     </div>
+    <script>
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', function () {
+                fetch('_act.php', {
+                    method: 'POST',
+                    body: new URLSearchParams({ action: 'logout' })
+                }).finally(() => {
+                    document.cookie = 'mdash_user=; path=/; max-age=0';
+                    window.location.href = 'index.php';
+                });
+            });
+        }
+    </script>
 </body>
 </html>
