@@ -51,6 +51,33 @@ $pdo->exec(
     "
 );
 
+try {
+    $columnsStmt = $pdo->query('SHOW COLUMNS FROM users');
+    $columns = [];
+    foreach ($columnsStmt->fetchAll() as $col) {
+        $columns[$col['Field']] = true;
+    }
+
+    if (!isset($columns['is_enabled'])) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN is_enabled TINYINT(1) NOT NULL DEFAULT 1');
+        if (isset($columns['is_active'])) {
+            $pdo->exec('UPDATE users SET is_enabled = is_active');
+        }
+    }
+
+    if (!isset($columns['is_admin'])) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0');
+    }
+
+    if (!isset($columns['role'])) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'");
+    }
+
+    $pdo->exec("UPDATE users SET role = 'admin' WHERE is_admin = 1 AND (role IS NULL OR role = '' OR role = 'user')");
+} catch (PDOException $e) {
+    // Non bloccare il login in caso di schema lock temporaneo.
+}
+
 $countStmt = $pdo->query('SELECT COUNT(*) FROM users');
 if ((int) $countStmt->fetchColumn() === 0) {
     $defaultHash = password_hash('admin123', PASSWORD_DEFAULT);
@@ -88,9 +115,22 @@ if ($action === 'login') {
         respond(false, 'Credenziali non valide.');
     }
 
-    if ((int) $user['is_active'] !== 1) {
+    $isEnabled = 1;
+    if (array_key_exists('is_enabled', $user)) {
+        $isEnabled = (int)$user['is_enabled'];
+    } elseif (array_key_exists('is_active', $user)) {
+        $isEnabled = (int)$user['is_active'];
+    }
+
+    if ($isEnabled !== 1) {
         respond(false, 'L’utente è disattivato.');
     }
+
+    $isAdmin = 0;
+    if (array_key_exists('is_admin', $user)) {
+        $isAdmin = (int)$user['is_admin'];
+    }
+    $role = (string)($user['role'] ?? ($isAdmin === 1 ? 'admin' : 'user'));
 
     $now = (new DateTimeImmutable('now', new DateTimeZone('Europe/Rome')))->format('Y-m-d H:i:s');
     $ip = $_SERVER['REMOTE_ADDR'] ?? null;
@@ -103,13 +143,18 @@ if ($action === 'login') {
 
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['username'] = $user['username'];
-    $_SESSION['role'] = $user['role'];
+    $_SESSION['role'] = $role;
+    $_SESSION['is_admin'] = $isAdmin;
+    $_SESSION['is_enabled'] = $isEnabled;
+    $_SESSION['login_time'] = $now;
 
     respond(true, 'Login effettuato con successo.', [
         'user' => [
             'id' => (int) $user['id'],
             'username' => $user['username'],
-            'role' => $user['role'],
+            'role' => $role,
+            'is_admin' => $isAdmin,
+            'is_enabled' => $isEnabled,
         ],
     ]);
 }
