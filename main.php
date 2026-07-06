@@ -67,10 +67,11 @@ function h($value) {
             <h1>Benvenuto</h1>
             <p>Seleziona una delle azioni disponibili per iniziare.</p>
             <div class="grid" style="margin-top:24px;">
-                <a href="upload.php" class="btn btn-primary">1) Upload</a>
-                <a href="database_list.php" class="btn btn-secondary">2) Elenco basi dati</a>
-                <a href="dashboard_builder.php" class="btn btn-accent">3) Dashboard builder</a>
-                <a href="dashboards.php" class="btn btn-warning">4) Elenco dashboard</a>
+                <a href="upload.php" class="btn btn-primary">Upload</a>
+                <a href="database_list.php" class="btn btn-secondary">Data pool</a>
+                <a href="dashboard_builder.php" class="btn btn-accent">Dashboard builder</a>
+                <a href="dashboards.php" class="btn btn-warning">Dashboard pool</a>
+                <a href="final.php" class="btn btn-success">My ready dashboards</a>
             </div>
         </div>
     </div>

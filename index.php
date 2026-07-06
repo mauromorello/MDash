@@ -14,7 +14,7 @@
     </style>
 </head>
 <body>
-    <h2>MDASH login</h2>
+    <h2>Accedi</h2>
     <form id="loginForm">
         <div>
             <label for="user">User:</label>
@@ -31,28 +31,6 @@
     <div id="message"></div>
 
     <script>
-        function getCookieValue(name) {
-            const cookies = document.cookie.split(';').map(c => c.trim());
-            for (const cookie of cookies) {
-                if (cookie.startsWith(name + '=')) {
-                    return cookie.substring(name.length + 1);
-                }
-            }
-            return null;
-        }
-
-        const storedUser = getCookieValue('mdash_user');
-        if (storedUser) {
-            try {
-                const user = JSON.parse(decodeURIComponent(storedUser));
-                if (user && user.id) {
-                    window.location.href = 'main.php';
-                }
-            } catch (e) {}
-        }
-    </script>
-
-    <script>
         document.getElementById('loginForm').addEventListener('submit', function (e) {
             e.preventDefault();
 
@@ -67,14 +45,7 @@
             .then(result => {
                 const message = document.getElementById('message');
                 if (result.success) {
-                    // salva cookie persistente con info utente e reindirizza
-                    try {
-                        const user = result.data.user || {};
-                        const cookieVal = encodeURIComponent(JSON.stringify(user));
-                        const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toUTCString();
-                        document.cookie = 'mdash_user=' + cookieVal + '; path=/; expires=' + expires + ';';
-                    } catch(e){}
-                    window.location.href = 'main.php';
+                    message.innerHTML = '<strong>Login riuscito!</strong> ' + result.message;
                 } else {
                     message.innerHTML = '<strong>Errore:</strong> ' + result.message;
                 }
