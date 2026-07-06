@@ -55,6 +55,16 @@ a:hover { text-decoration: underline; }
   font-weight: 700;
 }
 
+.brand-home {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.brand-home:hover {
+  text-decoration: underline;
+}
+
 .user-ribbon .info {
   color: #d1d5db;
   font-size: 0.95rem;
@@ -67,6 +77,10 @@ a:hover { text-decoration: underline; }
 }
 
 .user-ribbon .actions a {
+  color: #fff;
+}
+
+.user-ribbon .brand-home {
   color: #fff;
 }
 
@@ -267,7 +281,45 @@ button.secondary { background: #64748b; }
   font-size: 0.9rem;
 }
 
+.main-home-content {
+  width: 100%;
+  padding: 20px;
+}
+
+.main-home-panel {
+  margin: 0;
+  max-width: none;
+  width: 100%;
+  box-shadow: none;
+}
+
+.main-home-actions {
+  margin-top: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
 @media (max-width: 700px) {
   .form-grid { grid-template-columns: 1fr; }
   .topbar { flex-direction: column; align-items: flex-start; }
+  .user-ribbon {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .user-ribbon .actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .main-home-content {
+    padding: 14px;
+  }
+  .main-home-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1200px) {
+  .main-home-content {
+    padding: 28px 40px;
+  }
 }

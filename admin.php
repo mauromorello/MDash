@@ -39,6 +39,9 @@ if ((int)$me['is_admin'] !== 1) {
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.4.4/dist/css/tabulator.min.css">
     <style>
         body{font-family:Arial, Helvetica, sans-serif; padding:16px}
+        .brand-home { color:#111827; text-decoration:none; font-weight:700; font-size:1.05rem; }
+        .brand-home:hover { text-decoration:underline; }
+        .admin-header { margin-bottom: 12px; }
         #tables button{display:block;margin:6px 0}
         table{border-collapse:collapse;width:100%;}
         table td, table th{border:1px solid #ccc;padding:6px}
@@ -51,6 +54,7 @@ if ((int)$me['is_admin'] !== 1) {
     <script src="https://unpkg.com/tabulator-tables@5.4.4/dist/js/tabulator.min.js"></script>
 </head>
 <body>
+    <div class="admin-header"><a href="main.php" class="brand-home">Mdash</a></div>
     <h2>Admin Console</h2>
     <p>Benvenuto, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>) — <button id="logoutBtn">Logout</button></p>
 

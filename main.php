@@ -43,35 +43,30 @@ function h($value) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main</title>
     <link rel="stylesheet" href="assets/app.css">
-    <style>
-        .topbar { background: #222; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .topbar .brand { font-size: 1rem; font-weight: bold; }
-        .topbar .info { font-size: 0.95rem; }
-        .topbar button { background: #e53935; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; }
-        .main-content { padding: 20px; }
-    </style>
 </head>
 <body>
-    <div class="topbar">
+    <div class="user-ribbon">
         <div>
-            <div class="brand">MDash</div>
+            <a href="main.php" class="brand brand-home">Mdash</a>
             <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         </div>
-        <?php if (!empty($user['is_admin'])): ?>
-            <div><a href="admin.php" style="color:#fff; text-decoration:none; margin-left:20px;">Admin Console</a></div>
-        <?php endif; ?>
-        <button id="logoutBtn">Logout</button>
+        <div class="actions">
+            <?php if (!empty($user['is_admin'])): ?>
+                <a href="admin.php">Admin Console</a>
+            <?php endif; ?>
+            <button id="logoutBtn" type="button">Logout</button>
+        </div>
     </div>
-    <div class="main-content">
-        <div class="page" style="margin:0; padding:24px; box-shadow:none;">
+    <div class="main-home-content">
+        <div class="page main-home-panel">
             <h1>Benvenuto</h1>
             <p>Seleziona una delle azioni disponibili per iniziare.</p>
-            <div class="grid" style="margin-top:24px;">
+            <div class="grid main-home-actions">
                 <a href="upload.php" class="btn btn-primary">Upload</a>
                 <a href="database_list.php" class="btn btn-secondary">Data pool</a>
                 <a href="dashboard_builder.php" class="btn btn-accent">Dashboard builder</a>
                 <a href="dashboards.php" class="btn btn-warning">Dashboard pool</a>
-                <a href="final.php" class="btn btn-success">My ready dashboards</a>
+                <a href="final.php" class="btn btn-primary">My ready dashboards</a>
             </div>
         </div>
     </div>

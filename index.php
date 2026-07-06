@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 320px; margin: 50px auto; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1f2937; }
+        .login-wrap { width: 100%; max-width: 320px; margin: 50px auto; padding: 0 12px; }
+        .brand-home { display: inline-block; margin: 16px; color: #111827; text-decoration: none; font-weight: 700; }
+        .brand-home:hover { text-decoration: underline; }
         form div { margin-bottom: 10px; }
         label { display: block; margin-bottom: 4px; }
         input { width: 100%; padding: 8px; }
@@ -14,21 +17,24 @@
     </style>
 </head>
 <body>
-    <h2>Accedi</h2>
-    <form id="loginForm">
-        <div>
-            <label for="user">User:</label>
-            <input type="text" id="user" name="user" required>
-        </div>
-        <div>
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <br>
-        <button type="submit">Login</button>
-    </form>
+    <a href="main.php" class="brand-home">Mdash</a>
+    <div class="login-wrap">
+        <h2>Accedi</h2>
+        <form id="loginForm">
+            <div>
+                <label for="user">User:</label>
+                <input type="text" id="user" name="user" required>
+            </div>
+            <div>
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <br>
+            <button type="submit">Login</button>
+        </form>
 
-    <div id="message"></div>
+        <div id="message"></div>
+    </div>
 
     <script>
         document.getElementById('loginForm').addEventListener('submit', function (e) {

@@ -237,7 +237,7 @@ if ($record) {
 </head>
 <body>
     <div class="user-ribbon">
-        <div class="brand">MDash</div>
+        <a href="main.php" class="brand brand-home">Mdash</a>
         <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>

@@ -3,7 +3,7 @@ $key = $_GET['key'] ?? $_POST['key'] ?? '';
 $expectedKey = 'lskfdjsdkfjeijrnsdnfmndmf';
 if ($key !== $expectedKey) {
     http_response_code(403);
-    echo '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Config access denied</title></head><body><h1>Accesso non autorizzato</h1><p>Parametro key mancante o errato.</p></body></html>';
+    echo '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Config access denied</title></head><body><a href="main.php" style="display:inline-block;margin:12px 0;color:#111827;text-decoration:none;font-weight:700;">Mdash</a><h1>Accesso non autorizzato</h1><p>Parametro key mancante o errato.</p></body></html>';
     exit;
 }
 
@@ -171,6 +171,8 @@ function h($value) {
     <title>Config helper</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
+        .brand-home { display:inline-block; margin-bottom: 10px; color:#111827; text-decoration:none; font-weight:700; }
+        .brand-home:hover { text-decoration: underline; }
         table { border-collapse: collapse; width: 100%; max-width: 1000px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background: #f4f4f4; }
@@ -182,6 +184,7 @@ function h($value) {
     </style>
 </head>
 <body>
+    <a href="main.php" class="brand-home">Mdash</a>
     <h1>Configurazione tecnica</h1>
     <p>Questa pagina mostra i parametri tecnici utilizzati dal sito.</p>
 
