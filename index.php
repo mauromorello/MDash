@@ -1,3 +1,11 @@
+<?php
+session_start();
+
+if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_COOKIE['mdash_user'])) {
+    header('Location: main.php');
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -52,6 +60,18 @@
                 const message = document.getElementById('message');
                 if (result.success) {
                     message.innerHTML = '<strong>Login riuscito!</strong> ' + result.message;
+                    if (result.data && result.data.user) {
+                        const user = result.data.user;
+                        const payload = {
+                            id: user.id,
+                            username: user.username,
+                            is_admin: user.is_admin || 0,
+                            is_enabled: user.is_enabled || 1,
+                            login_time: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                        };
+                        document.cookie = 'mdash_user=' + encodeURIComponent(JSON.stringify(payload)) + '; path=/; max-age=' + (60 * 60 * 24 * 7) + '; SameSite=Lax';
+                    }
+                    window.location.href = 'main.php';
                 } else {
                     message.innerHTML = '<strong>Errore:</strong> ' + result.message;
                 }

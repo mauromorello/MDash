@@ -2,6 +2,11 @@
 // pagina admin: controlla cookie/session per autenticazione
 session_start();
 
+if (empty($_COOKIE['mdash_user'])) {
+    header('Location: index.php');
+    exit;
+}
+
 function getUserFromCookie(){
     if (!empty($_SESSION['user_id'])) {
         return [

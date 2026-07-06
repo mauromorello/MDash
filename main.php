@@ -1,6 +1,11 @@
 <?php
 session_start();
 
+if (empty($_COOKIE['mdash_user'])) {
+    header('Location: index.php');
+    exit;
+}
+
 function getUserFromSessionOrCookie() {
     if (!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) {
         return [

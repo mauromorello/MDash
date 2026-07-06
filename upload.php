@@ -1,6 +1,11 @@
 <?php
 session_start();
 
+if (empty($_COOKIE['mdash_user'])) {
+    header('Location: index.php');
+    exit;
+}
+
 function sendJson($success, $message, $uploadId = 0): void {
     header('Content-Type: application/json');
     echo json_encode([
