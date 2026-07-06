@@ -40,6 +40,10 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function utf8Length(string $value): int {
+    return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+}
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -93,6 +97,15 @@ try {
         if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
             $pdo->exec("ALTER TABLE uploads MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
         }
+
+        // Ensure long textual fields can store rich prompts without truncation errors.
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN description MEDIUMTEXT NOT NULL");
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN tags TEXT NOT NULL");
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN long_description MEDIUMTEXT NOT NULL");
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN prompt_1 MEDIUMTEXT NOT NULL");
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN prompt_2 MEDIUMTEXT NOT NULL");
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_1 MEDIUMTEXT NOT NULL");
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_2 MEDIUMTEXT NOT NULL");
     }
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
@@ -175,26 +188,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $longDescription = trim((string)($_POST['long_description'] ?? ''));
         $isPublic = (int)($_POST['is_public'] ?? 0);
 
-        if ($uploadId > 0) {
-            $stmt = $pdo->prepare(
-                'UPDATE uploads SET description = ?, tags = ?, long_description = ?, prompt_1 = ?, prompt_2 = ?, id_owner = ?, is_public = ? WHERE id = ? AND id_owner = ?'
-            );
-            $stmt->execute([
-                $description,
-                $tags,
-                $longDescription,
-                $prompt1,
-                $prompt2,
-                (int)$user['id'],
-                $isPublic,
-                $uploadId,
-                (int)$user['id'],
-            ]);
-            header('Location: index.php');
-            exit;
+        if (utf8Length($description) > 16000000 || utf8Length($tags) > 65000 || utf8Length($longDescription) > 16000000 || utf8Length($prompt1) > 16000000 || utf8Length($prompt2) > 16000000) {
+            $message = 'Alcuni campi sono troppo lunghi. Riduci il testo e riprova.';
         }
 
-        $message = 'Impossibile completare il salvataggio.';
+        if ($message === '' && $uploadId > 0) {
+            try {
+                $stmt = $pdo->prepare(
+                    'UPDATE uploads SET description = ?, tags = ?, long_description = ?, prompt_1 = ?, prompt_2 = ?, id_owner = ?, is_public = ? WHERE id = ? AND id_owner = ?'
+                );
+                $stmt->execute([
+                    $description,
+                    $tags,
+                    $longDescription,
+                    $prompt1,
+                    $prompt2,
+                    (int)$user['id'],
+                    $isPublic,
+                    $uploadId,
+                    (int)$user['id'],
+                ]);
+                header('Location: main.php');
+                exit;
+            } catch (PDOException $e) {
+                $message = 'Errore durante il salvataggio dei metadati: ' . $e->getMessage();
+            }
+        }
+
+        if ($message === '') {
+            $message = 'Impossibile completare il salvataggio.';
+        }
     }
 }
 
