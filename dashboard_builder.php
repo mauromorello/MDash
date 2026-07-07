@@ -93,8 +93,11 @@ try {
             prompt MEDIUMTEXT NOT NULL,
             `date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             id_owner INT NOT NULL,
+            is_hidden TINYINT(1) NOT NULL DEFAULT 0,
+            is_public TINYINT(1) NOT NULL DEFAULT 0,
             INDEX idx_templates_owner (id_owner),
-            INDEX idx_templates_date (`date`)
+            INDEX idx_templates_date (`date`),
+            INDEX idx_templates_hidden_public (is_hidden, is_public)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
@@ -104,6 +107,16 @@ try {
         if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
             $pdo->exec("ALTER TABLE dashboards MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
         }
+    }
+
+    $hiddenColumn = $pdo->query("SHOW COLUMNS FROM templates LIKE 'is_hidden'")->fetch(PDO::FETCH_ASSOC);
+    if (!$hiddenColumn) {
+        $pdo->exec("ALTER TABLE templates ADD COLUMN is_hidden TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
+    $publicColumn = $pdo->query("SHOW COLUMNS FROM templates LIKE 'is_public'")->fetch(PDO::FETCH_ASSOC);
+    if (!$publicColumn) {
+        $pdo->exec("ALTER TABLE templates ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0");
     }
 
     $uploadsStmt = $pdo->query("SELECT id, filename, description FROM uploads ORDER BY id DESC");
@@ -128,22 +141,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     }
 
     if (!$pdo) {
-        $error = 'Errore database: ' . $error;
+        $error = 'Database error: ' . $error;
     } elseif ($formData['title'] === '') {
-        $error = 'Il titolo della dashboard è obbligatorio.';
+        $error = 'Dashboard title is required.';
     } else {
         try {
             $idTemplate = (int)($formData['id_template'] !== '' ? $formData['id_template'] : 0);
             $dashboardPrompt2 = $formData['dashboard_prompt_2'];
 
             $verboseInstructionBlock =
-                "[Istruzioni operative verbose per la costruzione della dashboard]\n" .
-                "- Base dati: identifica chiaramente la sorgente dati e descrivi percorso, nome file e contesto d'uso.\n" .
-                "- Lettura campi: per ogni campo specifica significato, tipo informativo, unità di misura, valori attesi e possibili valori anomali.\n" .
-                "- Costruzione file fisico (template): genera output HTML completo e auto-consistente con struttura chiara, CSS e script necessari, senza dipendenze non richieste.\n" .
-                "- Layout dashboard: organizza intestazione, KPI, grafici e tabelle in sezioni leggibili; prevedi responsività desktop/mobile e priorità visiva delle metriche principali.\n" .
-                "- Qualità risultato: usa etichette in italiano, titoli descrittivi, legende chiare, gestione dataset vuoti e fallback in caso di dati mancanti.\n" .
-                "- Tracciabilità: commenta nel testo del prompt quali sezioni usano dati raw, quali fanno aggregazioni e quali applicano filtri o trasformazioni.";
+                "[Verbose operating instructions for dashboard generation]\n" .
+                "- Data source section: clearly identify source path, file name, and business context before any transformation.\n" .
+                "- Field interpretation section: explain meaning, semantic type, unit, expected values, and anomaly handling for each relevant field.\n" .
+                "- Physical file construction section: produce a complete standalone HTML output with coherent CSS and only required scripts.\n" .
+                "- Dashboard layout section: structure header, KPI area, charts, tables, and notes with responsive behavior for desktop and mobile.\n" .
+                "- Quality rules section: include clear labels, legends, empty-state handling, and fallback behavior for missing data.\n" .
+                "- Traceability section: state which blocks are raw data views and which are filtered, aggregated, or derived computations.";
 
             $dashboardPrompt2 = trim((string)$dashboardPrompt2);
             $dashboardPrompt2 = $dashboardPrompt2 === ''
@@ -156,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 
                 $selectedTemplate = $templateStmt->fetch();
                 if (!$selectedTemplate) {
-                    throw new RuntimeException('Template selezionato non trovato o non accessibile.');
+                    throw new RuntimeException('Selected template not found or not accessible.');
                 }
 
                 $templatePrompt = trim((string)($selectedTemplate['prompt'] ?? ''));
@@ -182,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             header('Location: dashboards.php?created=1');
             exit;
         } catch (Throwable $e) {
-            $error = 'Errore durante il salvataggio della dashboard: ' . $e->getMessage();
+            $error = 'Error while saving the dashboard: ' . $e->getMessage();
         }
     }
 }
@@ -211,15 +224,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         <div class="topbar">
             <div>
                 <h1>Dashboard builder</h1>
-                <div class="meta">Crea una nuova dashboard partendo da una base dati caricata.</div>
+                <div class="meta">Create a dashboard starting from an uploaded data source.</div>
             </div>
-            <a href="dashboards.php">Vai all'elenco dashboard</a>
+            <a href="dashboards.php">Go to dashboard list</a>
         </div>
 
         <?php if ($error): ?>
             <div class="message error"><?php echo h($error); ?></div>
         <?php elseif (!empty($_GET['updated'])): ?>
-            <div class="message">Dashboard aggiornata correttamente.</div>
+            <div class="message">Dashboard updated successfully.</div>
         <?php endif; ?>
 
         <div class="card">
@@ -227,15 +240,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 <input type="hidden" name="action" value="create_dashboard">
 
                 <div class="field">
-                    <label for="title">Titolo dashboard</label>
+                        <label for="title">Dashboard title</label>
                     <input type="text" id="title" name="title" value="<?php echo h($formData['title']); ?>" required>
                 </div>
 
                 <div class="form-grid">
                     <div class="field">
-                        <label for="id_datasource">Base dati</label>
+                        <label for="id_datasource">Data source</label>
                         <select id="id_datasource" name="id_datasource">
-                            <option value="">Nessuna</option>
+                            <option value="">None</option>
                             <?php foreach ($uploads as $upload): ?>
                                 <option value="<?php echo h($upload['id']); ?>"<?php echo ((string)$formData['id_datasource'] === (string)$upload['id']) ? ' selected' : ''; ?>>
                                     #<?php echo h($upload['id']); ?> - <?php echo h($upload['filename']); ?>
@@ -244,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                         </select>
                     </div>
                     <div class="field">
-                        <label for="id_makeup">ID makeup</label>
+                        <label for="id_makeup">Makeup ID</label>
                         <input type="text" id="id_makeup" name="id_makeup" value="<?php echo h($formData['id_makeup']); ?>">
                     </div>
                 </div>
@@ -273,19 +286,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 <div class="field">
                     <label for="id_template">Template prompt</label>
                     <select id="id_template" name="id_template">
-                        <option value="0">Nessun template</option>
+                        <option value="0">No template</option>
                         <?php foreach ($templates as $template): ?>
                             <option value="<?php echo h($template['id']); ?>"<?php echo ((string)$formData['id_template'] === (string)$template['id']) ? ' selected' : ''; ?>>
-                                #<?php echo h($template['id']); ?> - <?php echo h($template['title']); ?><?php echo ((int)($template['is_public'] ?? 0) === 1 && (int)($template['id_owner'] ?? 0) !== (int)$user['id']) ? ' (creato da ' . h($template['owner_username'] ?? ('utente #' . $template['id_owner'])) . ')' : ''; ?>
+                                #<?php echo h($template['id']); ?> - <?php echo h($template['title']); ?><?php echo ((int)($template['is_public'] ?? 0) === 1 && (int)($template['id_owner'] ?? 0) !== (int)$user['id']) ? ' (created by ' . h($template['owner_username'] ?? ('user #' . $template['id_owner'])) . ')' : ''; ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="meta">Il prompt del template selezionato verrà aggiunto automaticamente a Dashboard prompt 2 durante il salvataggio.</div>
+                    <div class="meta">The selected template prompt will be appended to Dashboard prompt 2 during save.</div>
                 </div>
 
                 <div class="inline-actions">
-                    <button type="submit">Salva dashboard</button>
-                    <a href="dashboards.php" class="btn-secondary">Annulla</a>
+                    <button type="submit">Save dashboard</button>
+                    <a href="dashboards.php" class="btn-secondary">Cancel</a>
                 </div>
             </form>
         </div>

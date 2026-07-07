@@ -64,15 +64,49 @@ function h($value) {
     </div>
     <div class="main-home-content">
         <div class="page main-home-panel">
-            <h1>Benvenuto</h1>
-            <p>Seleziona una delle azioni disponibili per iniziare.</p>
-            <div class="grid main-home-actions">
-                <a href="upload.php" class="btn btn-primary">Upload</a>
-                <a href="database_list.php" class="btn btn-secondary">Data pool</a>
-                <a href="dashboard_builder.php" class="btn btn-accent">Dashboard builder</a>
-                <a href="dashboards.php" class="btn btn-warning">Dashboard pool</a>
-                <a href="templates.php" class="btn btn-secondary">Templates</a>
-                <a href="final.php" class="btn btn-primary">My ready dashboards</a>
+            <h1>Welcome</h1>
+            <p>Select a section to continue your workflow.</p>
+
+            <div class="main-sections-grid">
+                <div class="main-section-card">
+                    <h2>Data Sources</h2>
+                    <div class="main-action-item">
+                        <a href="upload.php" class="btn btn-primary">Upload Files</a>
+                        <p class="main-action-desc">Upload new CSV files and create source records.</p>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="database_list.php" class="btn btn-secondary">Data Pool</a>
+                        <p class="main-action-desc">Browse and manage your available data sources.</p>
+                    </div>
+                </div>
+
+                <div class="main-section-card">
+                    <h2>Templates</h2>
+                    <div class="main-action-item">
+                        <a href="templates.php" class="btn btn-secondary">Template Library</a>
+                        <p class="main-action-desc">Create reusable prompts and publish shared templates.</p>
+                    </div>
+                </div>
+
+                <div class="main-section-card">
+                    <h2>Dashboard Builder</h2>
+                    <div class="main-action-item">
+                        <a href="dashboard_builder.php" class="btn btn-accent">Create Dashboard</a>
+                        <p class="main-action-desc">Build a dashboard by combining data, rules, and templates.</p>
+                    </div>
+                </div>
+
+                <div class="main-section-card">
+                    <h2>Dashboards</h2>
+                    <div class="main-action-item">
+                        <a href="dashboards.php" class="btn btn-warning">Dashboard Pool</a>
+                        <p class="main-action-desc">Review, edit, and generate prompts from saved dashboards.</p>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="final.php" class="btn btn-primary">Ready Dashboards</a>
+                        <p class="main-action-desc">Open your generated dashboard outputs ready to use.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
