@@ -71,6 +71,7 @@ function h($value) {
                 <a href="database_list.php" class="btn btn-secondary">Data pool</a>
                 <a href="dashboard_builder.php" class="btn btn-accent">Dashboard builder</a>
                 <a href="dashboards.php" class="btn btn-warning">Dashboard pool</a>
+                <a href="templates.php" class="btn btn-secondary">Templates</a>
                 <a href="final.php" class="btn btn-primary">My ready dashboards</a>
             </div>
         </div>

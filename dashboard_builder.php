@@ -48,6 +48,7 @@ $pdo = null;
 $error = '';
 $message = '';
 $uploads = [];
+$templates = [];
 $formData = [
     'title' => '',
     'id_datasource' => '',
@@ -85,6 +86,18 @@ try {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS templates (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            prompt MEDIUMTEXT NOT NULL,
+            `date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_owner INT NOT NULL,
+            INDEX idx_templates_owner (id_owner),
+            INDEX idx_templates_date (`date`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
     $tableExists = $pdo->query("SHOW TABLES LIKE 'dashboards'")->fetchColumn();
     if ($tableExists) {
         $idColumn = $pdo->query("SHOW COLUMNS FROM dashboards LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
@@ -95,6 +108,15 @@ try {
 
     $uploadsStmt = $pdo->query("SELECT id, filename, description FROM uploads ORDER BY id DESC");
     $uploads = $uploadsStmt->fetchAll();
+
+    if (!empty($user['is_admin'])) {
+        $templatesStmt = $pdo->query("SELECT id, title, prompt, `date`, id_owner FROM templates ORDER BY id DESC");
+        $templates = $templatesStmt->fetchAll();
+    } else {
+        $templatesStmt = $pdo->prepare("SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id_owner = ? ORDER BY id DESC");
+        $templatesStmt->execute([(int)$user['id']]);
+        $templates = $templatesStmt->fetchAll();
+    }
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -110,6 +132,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $error = 'Il titolo della dashboard è obbligatorio.';
     } else {
         try {
+            $idTemplate = (int)($formData['id_template'] !== '' ? $formData['id_template'] : 0);
+            $dashboardPrompt2 = $formData['dashboard_prompt_2'];
+
+            if ($idTemplate > 0) {
+                if (!empty($user['is_admin'])) {
+                    $templateStmt = $pdo->prepare('SELECT id, title, prompt FROM templates WHERE id = ? LIMIT 1');
+                    $templateStmt->execute([$idTemplate]);
+                } else {
+                    $templateStmt = $pdo->prepare('SELECT id, title, prompt FROM templates WHERE id = ? AND id_owner = ? LIMIT 1');
+                    $templateStmt->execute([$idTemplate, (int)$user['id']]);
+                }
+
+                $selectedTemplate = $templateStmt->fetch();
+                if (!$selectedTemplate) {
+                    throw new RuntimeException('Template selezionato non trovato o non accessibile.');
+                }
+
+                $templatePrompt = trim((string)($selectedTemplate['prompt'] ?? ''));
+                if ($templatePrompt !== '') {
+                    $templateBlock = "[Template #" . (int)$selectedTemplate['id'] . ' - ' . (string)$selectedTemplate['title'] . "]\n" . $templatePrompt;
+                    $dashboardPrompt2 = trim((string)$dashboardPrompt2);
+                    $dashboardPrompt2 = $dashboardPrompt2 === '' ? $templateBlock : ($dashboardPrompt2 . "\n\n" . $templateBlock);
+                }
+            }
+
             $stmt = $pdo->prepare(
                 'INSERT INTO dashboards (title, id_datasource, id_makeup, data_filter_prompt, data_manipulation_prompt, dashboard_prompt_1, dashboard_prompt_2, id_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             );
@@ -120,12 +167,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $formData['data_filter_prompt'],
                 $formData['data_manipulation_prompt'],
                 $formData['dashboard_prompt_1'],
-                $formData['dashboard_prompt_2'],
-                (int)($formData['id_template'] !== '' ? $formData['id_template'] : 0),
+                $dashboardPrompt2,
+                $idTemplate,
             ]);
             header('Location: dashboards.php?created=1');
             exit;
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             $error = 'Errore durante il salvataggio della dashboard: ' . $e->getMessage();
         }
     }
@@ -215,8 +262,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 </div>
 
                 <div class="field">
-                    <label for="id_template">ID template</label>
-                    <input type="text" id="id_template" name="id_template" value="<?php echo h($formData['id_template']); ?>">
+                    <label for="id_template">Template prompt</label>
+                    <select id="id_template" name="id_template">
+                        <option value="0">Nessun template</option>
+                        <?php foreach ($templates as $template): ?>
+                            <option value="<?php echo h($template['id']); ?>"<?php echo ((string)$formData['id_template'] === (string)$template['id']) ? ' selected' : ''; ?>>
+                                #<?php echo h($template['id']); ?> - <?php echo h($template['title']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="meta">Il prompt del template selezionato verrà aggiunto automaticamente a Dashboard prompt 2 durante il salvataggio.</div>
                 </div>
 
                 <div class="inline-actions">

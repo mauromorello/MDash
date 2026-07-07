@@ -32,6 +32,28 @@ function pdoConnect($host, $user, $pass, $db = null){
     return new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 }
 
+function ensureTemplatesTable(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS templates (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            prompt MEDIUMTEXT NOT NULL,
+            `date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_owner INT NOT NULL,
+            INDEX idx_templates_owner (id_owner),
+            INDEX idx_templates_date (`date`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
+    $tableExists = $pdo->query("SHOW TABLES LIKE 'templates'")->fetchColumn();
+    if ($tableExists) {
+        $idColumn = $pdo->query("SHOW COLUMNS FROM templates LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
+        if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
+            $pdo->exec("ALTER TABLE templates MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+        }
+    }
+}
+
 try {
     $pdo = pdoConnect($dbHost, $dbUser, $dbPass, $dbName);
 } catch (Exception $e) {
@@ -107,6 +129,120 @@ if ($action === 'list_tables') {
         $tables[] = $r[0];
     }
     respond(true, 'Tabelle trovate.', ['tables'=>$tables]);
+}
+
+if ($action === 'list_templates') {
+    try {
+        ensureTemplatesTable($pdo);
+        if (!empty($user['is_admin'])) {
+            $stmt = $pdo->query('SELECT id, title, prompt, `date`, id_owner FROM templates ORDER BY id DESC');
+            $rows = $stmt->fetchAll();
+        } else {
+            $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id_owner = ? ORDER BY id DESC');
+            $stmt->execute([(int)$user['id']]);
+            $rows = $stmt->fetchAll();
+        }
+        respond(true, 'Template trovati.', ['templates' => $rows]);
+    } catch (Exception $e) {
+        respond(false, 'Errore lettura template: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'get_template') {
+    $id = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
+    if ($id <= 0) {
+        respond(false, 'ID template non valido.');
+    }
+
+    try {
+        ensureTemplatesTable($pdo);
+        if (!empty($user['is_admin'])) {
+            $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id = ? LIMIT 1');
+            $stmt->execute([$id]);
+        } else {
+            $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id = ? AND id_owner = ? LIMIT 1');
+            $stmt->execute([$id, (int)$user['id']]);
+        }
+        $row = $stmt->fetch();
+        if (!$row) {
+            respond(false, 'Template non trovato o non accessibile.');
+        }
+        respond(true, 'Template trovato.', ['template' => $row]);
+    } catch (Exception $e) {
+        respond(false, 'Errore lettura template: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'create_template') {
+    $title = trim((string)($_POST['title'] ?? ''));
+    $prompt = trim((string)($_POST['prompt'] ?? ''));
+
+    if ($title === '') {
+        respond(false, 'Il titolo del template è obbligatorio.');
+    }
+
+    try {
+        ensureTemplatesTable($pdo);
+        $stmt = $pdo->prepare('INSERT INTO templates (title, prompt, `date`, id_owner) VALUES (?, ?, NOW(), ?)');
+        $stmt->execute([$title, $prompt, (int)$user['id']]);
+        respond(true, 'Template creato.', ['id' => (int)$pdo->lastInsertId()]);
+    } catch (Exception $e) {
+        respond(false, 'Errore creazione template: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'update_template') {
+    $id = (int)($_POST['id'] ?? 0);
+    $title = trim((string)($_POST['title'] ?? ''));
+    $prompt = trim((string)($_POST['prompt'] ?? ''));
+
+    if ($id <= 0) {
+        respond(false, 'ID template non valido.');
+    }
+    if ($title === '') {
+        respond(false, 'Il titolo del template è obbligatorio.');
+    }
+
+    try {
+        ensureTemplatesTable($pdo);
+        if (!empty($user['is_admin'])) {
+            $stmt = $pdo->prepare('UPDATE templates SET title = ?, prompt = ?, `date` = NOW() WHERE id = ?');
+            $stmt->execute([$title, $prompt, $id]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE templates SET title = ?, prompt = ?, `date` = NOW() WHERE id = ? AND id_owner = ?');
+            $stmt->execute([$title, $prompt, $id, (int)$user['id']]);
+        }
+        if ($stmt->rowCount() <= 0) {
+            respond(false, 'Template non trovato o non modificabile.');
+        }
+        respond(true, 'Template aggiornato.');
+    } catch (Exception $e) {
+        respond(false, 'Errore aggiornamento template: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'delete_template') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        respond(false, 'ID template non valido.');
+    }
+
+    try {
+        ensureTemplatesTable($pdo);
+        if (!empty($user['is_admin'])) {
+            $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ?');
+            $stmt->execute([$id]);
+        } else {
+            $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ? AND id_owner = ?');
+            $stmt->execute([$id, (int)$user['id']]);
+        }
+        if ($stmt->rowCount() <= 0) {
+            respond(false, 'Template non trovato o non eliminabile.');
+        }
+        respond(true, 'Template eliminato.');
+    } catch (Exception $e) {
+        respond(false, 'Errore eliminazione template: ' . $e->getMessage());
+    }
 }
 
 if ($action === 'list_users') {
