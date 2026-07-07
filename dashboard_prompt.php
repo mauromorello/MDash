@@ -258,6 +258,8 @@ $dashboard = null;
 $upload = null;
 $template = null;
 $resultFilePath = '';
+$generatedHtml = '';
+$generationSteps = [];
 $message = '';
 $dashboardId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $promptTitle = '';
@@ -314,19 +316,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
         $error = 'Dashboard not found.';
     } else {
         try {
+            $generationSteps[] = 'Preparing dashboard generation request.';
             ensureResultsTable($pdo);
+            $generationSteps[] = 'Results table is available.';
 
+            $generationSteps[] = 'Sending prompt to Gemini API.';
             $generatedHtml = callGeminiGenerateHtml((string)($_POST['master_prompt'] ?? $masterPrompt));
+            $generationSteps[] = 'AI response received successfully.';
+            $generationSteps[] = 'Generated HTML length: ' . strlen($generatedHtml) . ' bytes.';
 
             $resultsDir = __DIR__ . DIRECTORY_SEPARATOR . 'results';
 
             $resultId = getNextResultId($pdo);
             $resultDir = $resultsDir . DIRECTORY_SEPARATOR . $resultId;
             ensureDirectory($resultDir);
+            $generationSteps[] = 'Created output directory: results/' . $resultId . '/';
 
             $fileName = 'dashboard.html';
             $diskPath = $resultDir . DIRECTORY_SEPARATOR . $fileName;
             file_put_contents($diskPath, $generatedHtml);
+            $generationSteps[] = 'Saved dashboard HTML to results/' . $resultId . '/dashboard.html.';
 
             $relativePath = 'results/' . $resultId . '/' . $fileName;
             $thumbnailPath = 'results/' . $resultId . '/thumbnail.svg';
@@ -340,6 +349,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
                     'created_at' => date('Y-m-d H:i:s'),
                 ])
             );
+            $generationSteps[] = 'Generated thumbnail SVG preview.';
             $idTemplate = (int)($dashboard['id_template'] ?? 0);
             $idOwner = (int)$user['id'];
             $isPublic = (int)($dashboard['is_public'] ?? 0);
@@ -358,10 +368,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
                 $isPublic,
                 $isHidden,
             ]);
+            $generationSteps[] = 'Inserted result row with ID ' . $resultId . '.';
 
             $resultFilePath = $relativePath;
             $message = 'Dashboard generated successfully.';
+            $generationSteps[] = 'Generation completed.';
         } catch (Throwable $e) {
+            $generationSteps[] = 'Generation failed.';
             $error = 'Error while generating dashboard: ' . $e->getMessage();
         }
     }
@@ -439,6 +452,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
             <div class="message"><?php echo h($message); ?><?php echo $resultFilePath !== '' ? ' Output saved to ' . h($resultFilePath) . '.' : ''; ?></div>
         <?php endif; ?>
 
+        <?php if (!empty($generationSteps)): ?>
+            <div class="card generation-panel">
+                <h2>Generation status</h2>
+                <p class="meta">The app cannot expose the model's internal reasoning, but it can show the execution steps, the returned HTML, and the saved output.</p>
+                <ul class="generation-log">
+                    <?php foreach ($generationSteps as $step): ?>
+                        <li><?php echo h($step); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
         <div class="card">
             <form method="post">
                 <input type="hidden" name="action" value="preview_prompt">
@@ -471,6 +496,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
                 <button type="submit">Generate dashboard</button>
             </form>
         </div>
+
+        <?php if (!empty($generatedHtml)): ?>
+            <div class="card generation-panel">
+                <h2>Generated output</h2>
+                <div class="generated-preview-wrap">
+                    <iframe class="generated-preview-frame" title="Generated dashboard preview" srcdoc="<?php echo h($generatedHtml); ?>"></iframe>
+                </div>
+
+                <div class="field">
+                    <label for="generatedHtmlCode">Generated HTML source</label>
+                    <textarea id="generatedHtmlCode" readonly style="min-height: 360px;"><?php echo h($generatedHtml); ?></textarea>
+                </div>
+
+                <?php if ($resultFilePath !== ''): ?>
+                    <div class="inline-actions">
+                        <a href="<?php echo h($resultFilePath); ?>" target="_blank" rel="noopener">Open saved file</a>
+                        <a href="results.php">Go to results</a>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <script>
