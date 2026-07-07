@@ -40,8 +40,11 @@ function ensureTemplatesTable(PDO $pdo): void {
             prompt MEDIUMTEXT NOT NULL,
             `date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             id_owner INT NOT NULL,
+            is_hidden TINYINT(1) NOT NULL DEFAULT 0,
+            is_public TINYINT(1) NOT NULL DEFAULT 0,
             INDEX idx_templates_owner (id_owner),
-            INDEX idx_templates_date (`date`)
+            INDEX idx_templates_date (`date`),
+            INDEX idx_templates_hidden_public (is_hidden, is_public)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
@@ -50,6 +53,16 @@ function ensureTemplatesTable(PDO $pdo): void {
         $idColumn = $pdo->query("SHOW COLUMNS FROM templates LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
         if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
             $pdo->exec("ALTER TABLE templates MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+        }
+
+        $hiddenColumn = $pdo->query("SHOW COLUMNS FROM templates LIKE 'is_hidden'")->fetch(PDO::FETCH_ASSOC);
+        if (!$hiddenColumn) {
+            $pdo->exec("ALTER TABLE templates ADD COLUMN is_hidden TINYINT(1) NOT NULL DEFAULT 0");
+        }
+
+        $publicColumn = $pdo->query("SHOW COLUMNS FROM templates LIKE 'is_public'")->fetch(PDO::FETCH_ASSOC);
+        if (!$publicColumn) {
+            $pdo->exec("ALTER TABLE templates ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0");
         }
     }
 }
@@ -134,14 +147,16 @@ if ($action === 'list_tables') {
 if ($action === 'list_templates') {
     try {
         ensureTemplatesTable($pdo);
-        if (!empty($user['is_admin'])) {
-            $stmt = $pdo->query('SELECT id, title, prompt, `date`, id_owner FROM templates ORDER BY id DESC');
-            $rows = $stmt->fetchAll();
-        } else {
-            $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id_owner = ? ORDER BY id DESC');
-            $stmt->execute([(int)$user['id']]);
-            $rows = $stmt->fetchAll();
-        }
+        $stmt = $pdo->prepare(
+            'SELECT t.id, t.title, t.prompt, t.`date`, t.id_owner, t.is_hidden, t.is_public, u.username AS owner_username,
+                    CASE WHEN t.id_owner = ? THEN 1 ELSE 0 END AS is_owner
+             FROM templates t
+             LEFT JOIN users u ON u.id = t.id_owner
+             WHERE t.id_owner = ? OR (t.is_public = 1 AND t.is_hidden = 0)
+             ORDER BY t.id DESC'
+        );
+        $stmt->execute([(int)$user['id'], (int)$user['id']]);
+        $rows = $stmt->fetchAll();
         respond(true, 'Template trovati.', ['templates' => $rows]);
     } catch (Exception $e) {
         respond(false, 'Errore lettura template: ' . $e->getMessage());
@@ -156,13 +171,8 @@ if ($action === 'get_template') {
 
     try {
         ensureTemplatesTable($pdo);
-        if (!empty($user['is_admin'])) {
-            $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id = ? LIMIT 1');
-            $stmt->execute([$id]);
-        } else {
-            $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id = ? AND id_owner = ? LIMIT 1');
-            $stmt->execute([$id, (int)$user['id']]);
-        }
+        $stmt = $pdo->prepare('SELECT id, title, prompt, `date`, id_owner, is_hidden, is_public FROM templates WHERE id = ? AND id_owner = ? LIMIT 1');
+        $stmt->execute([$id, (int)$user['id']]);
         $row = $stmt->fetch();
         if (!$row) {
             respond(false, 'Template non trovato o non accessibile.');
@@ -176,6 +186,8 @@ if ($action === 'get_template') {
 if ($action === 'create_template') {
     $title = trim((string)($_POST['title'] ?? ''));
     $prompt = trim((string)($_POST['prompt'] ?? ''));
+    $isHidden = (int)($_POST['is_hidden'] ?? 0) === 1 ? 1 : 0;
+    $isPublic = (int)($_POST['is_public'] ?? 0) === 1 ? 1 : 0;
 
     if ($title === '') {
         respond(false, 'Il titolo del template è obbligatorio.');
@@ -183,8 +195,8 @@ if ($action === 'create_template') {
 
     try {
         ensureTemplatesTable($pdo);
-        $stmt = $pdo->prepare('INSERT INTO templates (title, prompt, `date`, id_owner) VALUES (?, ?, NOW(), ?)');
-        $stmt->execute([$title, $prompt, (int)$user['id']]);
+        $stmt = $pdo->prepare('INSERT INTO templates (title, prompt, `date`, id_owner, is_hidden, is_public) VALUES (?, ?, NOW(), ?, ?, ?)');
+        $stmt->execute([$title, $prompt, (int)$user['id'], $isHidden, $isPublic]);
         respond(true, 'Template creato.', ['id' => (int)$pdo->lastInsertId()]);
     } catch (Exception $e) {
         respond(false, 'Errore creazione template: ' . $e->getMessage());
@@ -195,6 +207,8 @@ if ($action === 'update_template') {
     $id = (int)($_POST['id'] ?? 0);
     $title = trim((string)($_POST['title'] ?? ''));
     $prompt = trim((string)($_POST['prompt'] ?? ''));
+    $isHidden = (int)($_POST['is_hidden'] ?? 0) === 1 ? 1 : 0;
+    $isPublic = (int)($_POST['is_public'] ?? 0) === 1 ? 1 : 0;
 
     if ($id <= 0) {
         respond(false, 'ID template non valido.');
@@ -205,13 +219,8 @@ if ($action === 'update_template') {
 
     try {
         ensureTemplatesTable($pdo);
-        if (!empty($user['is_admin'])) {
-            $stmt = $pdo->prepare('UPDATE templates SET title = ?, prompt = ?, `date` = NOW() WHERE id = ?');
-            $stmt->execute([$title, $prompt, $id]);
-        } else {
-            $stmt = $pdo->prepare('UPDATE templates SET title = ?, prompt = ?, `date` = NOW() WHERE id = ? AND id_owner = ?');
-            $stmt->execute([$title, $prompt, $id, (int)$user['id']]);
-        }
+        $stmt = $pdo->prepare('UPDATE templates SET title = ?, prompt = ?, is_hidden = ?, is_public = ?, `date` = NOW() WHERE id = ? AND id_owner = ?');
+        $stmt->execute([$title, $prompt, $isHidden, $isPublic, $id, (int)$user['id']]);
         if ($stmt->rowCount() <= 0) {
             respond(false, 'Template non trovato o non modificabile.');
         }
@@ -229,13 +238,8 @@ if ($action === 'delete_template') {
 
     try {
         ensureTemplatesTable($pdo);
-        if (!empty($user['is_admin'])) {
-            $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ?');
-            $stmt->execute([$id]);
-        } else {
-            $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ? AND id_owner = ?');
-            $stmt->execute([$id, (int)$user['id']]);
-        }
+        $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ? AND id_owner = ?');
+        $stmt->execute([$id, (int)$user['id']]);
         if ($stmt->rowCount() <= 0) {
             respond(false, 'Template non trovato o non eliminabile.');
         }

@@ -65,7 +65,7 @@ if (!$user) {
         <div class="topbar">
             <div>
                 <h1>Templates</h1>
-                <div class="meta">Crea, modifica ed elimina i template prompt da usare nel builder dashboard.</div>
+                <div class="meta"><span class="pill">I miei template</span> Crea, modifica ed elimina i template prompt da usare nel builder dashboard.</div>
             </div>
             <a href="dashboard_builder.php">Vai al dashboard builder</a>
         </div>
@@ -83,6 +83,22 @@ if (!$user) {
                     <label for="prompt">Prompt</label>
                     <textarea id="prompt" name="prompt" placeholder="Inserisci il prompt template"></textarea>
                 </div>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="is_public">Visibilità</label>
+                        <select id="is_public" name="is_public">
+                            <option value="0">Privato</option>
+                            <option value="1">Pubblico</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="is_hidden">Stato</label>
+                        <select id="is_hidden" name="is_hidden">
+                            <option value="0">Visibile</option>
+                            <option value="1">Nascosto</option>
+                        </select>
+                    </div>
+                </div>
                 <button type="submit">Salva template</button>
             </form>
         </div>
@@ -97,12 +113,13 @@ if (!$user) {
                             <th>Titolo</th>
                             <th>Prompt</th>
                             <th>Data</th>
-                            <th>Owner</th>
+                            <th>Creatore</th>
+                            <th>Stato</th>
                             <th>Azioni</th>
                         </tr>
                     </thead>
                     <tbody id="templatesRows">
-                        <tr><td colspan="6" class="empty">Caricamento template...</td></tr>
+                        <tr><td colspan="7" class="empty">Caricamento template...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -131,7 +148,7 @@ if (!$user) {
         function renderRows(rows) {
             const body = document.getElementById('templatesRows');
             if (!rows || rows.length === 0) {
-                body.innerHTML = '<tr><td colspan="6" class="empty">Nessun template disponibile.</td></tr>';
+                body.innerHTML = '<tr><td colspan="7" class="empty">Nessun template disponibile.</td></tr>';
                 return;
             }
 
@@ -139,19 +156,31 @@ if (!$user) {
             rows.forEach(function (row) {
                 const tr = document.createElement('tr');
                 const promptPreview = (row.prompt || '').length > 160 ? (row.prompt || '').slice(0, 160) + '...' : (row.prompt || '');
+                const isOwner = Number(row.is_owner || 0) === 1;
+                const isPublic = Number(row.is_public || 0) === 1;
+                const isHidden = Number(row.is_hidden || 0) === 1;
+                const creator = row.owner_username || ('Utente #' + String(row.id_owner || ''));
+
+                let statusText = isPublic ? 'Pubblico' : 'Privato';
+                if (isHidden) {
+                    statusText += ' | Nascosto';
+                }
+
+                const actionsHtml = isOwner
+                    ? '<div class="inline-actions">' +
+                        '<a href="edit_template.php?id=' + encodeURIComponent(row.id) + '">Modifica</a>' +
+                        '<button type="button" class="btn-danger delete-template" data-id="' + String(row.id || '') + '">Elimina</button>' +
+                      '</div>'
+                    : '<span class="meta">Solo lettura</span>';
 
                 tr.innerHTML = '' +
                     '<td>' + String(row.id || '') + '</td>' +
                     '<td>' + String(row.title || '') + '</td>' +
                     '<td><div style="white-space:pre-wrap;">' + String(promptPreview || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></td>' +
                     '<td>' + String(row.date || '') + '</td>' +
-                    '<td>' + String(row.id_owner || '') + '</td>' +
-                    '<td>' +
-                        '<div class="inline-actions">' +
-                            '<a href="edit_template.php?id=' + encodeURIComponent(row.id) + '">Modifica</a>' +
-                            '<button type="button" class="btn-danger delete-template" data-id="' + String(row.id || '') + '">Elimina</button>' +
-                        '</div>' +
-                    '</td>';
+                    '<td>' + (isPublic ? String(creator).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '-') + '</td>' +
+                    '<td>' + statusText + '</td>' +
+                    '<td>' + actionsHtml + '</td>';
 
                 body.appendChild(tr);
             });
@@ -197,13 +226,15 @@ if (!$user) {
             event.preventDefault();
             const title = document.getElementById('title').value.trim();
             const prompt = document.getElementById('prompt').value.trim();
+            const isPublic = Number(document.getElementById('is_public').value) === 1 ? 1 : 0;
+            const isHidden = Number(document.getElementById('is_hidden').value) === 1 ? 1 : 0;
 
             if (!title) {
                 showMessage('Il titolo del template è obbligatorio.', true);
                 return;
             }
 
-            api('create_template', { title: title, prompt: prompt }).then(function (res) {
+            api('create_template', { title: title, prompt: prompt, is_public: isPublic, is_hidden: isHidden }).then(function (res) {
                 if (!res.success) {
                     showMessage(res.message || 'Errore creazione template.', true);
                     return;

@@ -109,14 +109,15 @@ try {
     $uploadsStmt = $pdo->query("SELECT id, filename, description FROM uploads ORDER BY id DESC");
     $uploads = $uploadsStmt->fetchAll();
 
-    if (!empty($user['is_admin'])) {
-        $templatesStmt = $pdo->query("SELECT id, title, prompt, `date`, id_owner FROM templates ORDER BY id DESC");
-        $templates = $templatesStmt->fetchAll();
-    } else {
-        $templatesStmt = $pdo->prepare("SELECT id, title, prompt, `date`, id_owner FROM templates WHERE id_owner = ? ORDER BY id DESC");
-        $templatesStmt->execute([(int)$user['id']]);
-        $templates = $templatesStmt->fetchAll();
-    }
+    $templatesStmt = $pdo->prepare(
+        "SELECT t.id, t.title, t.prompt, t.id_owner, t.is_public, t.is_hidden, u.username AS owner_username
+         FROM templates t
+         LEFT JOIN users u ON u.id = t.id_owner
+         WHERE (t.id_owner = ? OR t.is_public = 1) AND t.is_hidden = 0
+         ORDER BY t.id DESC"
+    );
+    $templatesStmt->execute([(int)$user['id']]);
+    $templates = $templatesStmt->fetchAll();
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -135,14 +136,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             $idTemplate = (int)($formData['id_template'] !== '' ? $formData['id_template'] : 0);
             $dashboardPrompt2 = $formData['dashboard_prompt_2'];
 
+            $verboseInstructionBlock =
+                "[Istruzioni operative verbose per la costruzione della dashboard]\n" .
+                "- Base dati: identifica chiaramente la sorgente dati e descrivi percorso, nome file e contesto d'uso.\n" .
+                "- Lettura campi: per ogni campo specifica significato, tipo informativo, unità di misura, valori attesi e possibili valori anomali.\n" .
+                "- Costruzione file fisico (template): genera output HTML completo e auto-consistente con struttura chiara, CSS e script necessari, senza dipendenze non richieste.\n" .
+                "- Layout dashboard: organizza intestazione, KPI, grafici e tabelle in sezioni leggibili; prevedi responsività desktop/mobile e priorità visiva delle metriche principali.\n" .
+                "- Qualità risultato: usa etichette in italiano, titoli descrittivi, legende chiare, gestione dataset vuoti e fallback in caso di dati mancanti.\n" .
+                "- Tracciabilità: commenta nel testo del prompt quali sezioni usano dati raw, quali fanno aggregazioni e quali applicano filtri o trasformazioni.";
+
+            $dashboardPrompt2 = trim((string)$dashboardPrompt2);
+            $dashboardPrompt2 = $dashboardPrompt2 === ''
+                ? $verboseInstructionBlock
+                : ($dashboardPrompt2 . "\n\n" . $verboseInstructionBlock);
+
             if ($idTemplate > 0) {
-                if (!empty($user['is_admin'])) {
-                    $templateStmt = $pdo->prepare('SELECT id, title, prompt FROM templates WHERE id = ? LIMIT 1');
-                    $templateStmt->execute([$idTemplate]);
-                } else {
-                    $templateStmt = $pdo->prepare('SELECT id, title, prompt FROM templates WHERE id = ? AND id_owner = ? LIMIT 1');
-                    $templateStmt->execute([$idTemplate, (int)$user['id']]);
-                }
+                $templateStmt = $pdo->prepare('SELECT id, title, prompt FROM templates WHERE id = ? AND (id_owner = ? OR is_public = 1) AND is_hidden = 0 LIMIT 1');
+                $templateStmt->execute([$idTemplate, (int)$user['id']]);
 
                 $selectedTemplate = $templateStmt->fetch();
                 if (!$selectedTemplate) {
@@ -152,8 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $templatePrompt = trim((string)($selectedTemplate['prompt'] ?? ''));
                 if ($templatePrompt !== '') {
                     $templateBlock = "[Template #" . (int)$selectedTemplate['id'] . ' - ' . (string)$selectedTemplate['title'] . "]\n" . $templatePrompt;
-                    $dashboardPrompt2 = trim((string)$dashboardPrompt2);
-                    $dashboardPrompt2 = $dashboardPrompt2 === '' ? $templateBlock : ($dashboardPrompt2 . "\n\n" . $templateBlock);
+                    $dashboardPrompt2 = $dashboardPrompt2 . "\n\n" . $templateBlock;
                 }
             }
 
@@ -267,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                         <option value="0">Nessun template</option>
                         <?php foreach ($templates as $template): ?>
                             <option value="<?php echo h($template['id']); ?>"<?php echo ((string)$formData['id_template'] === (string)$template['id']) ? ' selected' : ''; ?>>
-                                #<?php echo h($template['id']); ?> - <?php echo h($template['title']); ?>
+                                #<?php echo h($template['id']); ?> - <?php echo h($template['title']); ?><?php echo ((int)($template['is_public'] ?? 0) === 1 && (int)($template['id_owner'] ?? 0) !== (int)$user['id']) ? ' (creato da ' . h($template['owner_username'] ?? ('utente #' . $template['id_owner'])) . ')' : ''; ?>
                             </option>
                         <?php endforeach; ?>
                     </select>

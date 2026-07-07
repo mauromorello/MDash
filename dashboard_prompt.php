@@ -135,6 +135,15 @@ if ($dashboard) {
         "ID makeup da usare in futuro: " . (string)($dashboard['id_makeup'] ?? 0) . "\n" .
         "Questa sezione per ora è solo informativa e servirà per comporre il master prompt finale."
     );
+    $sections[] = normalizeSection(
+        'Istruzioni operative verbose',
+        "Base dati: descrivi sempre sorgente, percorso, formato del file e contesto dei dati prima di elaborare la dashboard.\n\n" .
+        "Lettura dei campi: esplicita per ogni campo nome, significato, tipo informativo, eventuale unità di misura e regole di pulizia/normalizzazione.\n\n" .
+        "Costruzione file fisico (template): genera output HTML completo e autosufficiente, con struttura chiara, CSS coerente e script minimi necessari all'interattività.\n\n" .
+        "Layout dashboard: organizza sezioni con una gerarchia visiva chiara (header, KPI, grafici, tabelle, note), con attenzione alla responsività su desktop e mobile.\n\n" .
+        "Regole qualitative: usa etichette in italiano, legende comprensibili, fallback per dataset vuoti e segnala eventuali assunzioni interpretative fatte sui dati.\n\n" .
+        "Tracciabilità trasformazioni: indica nel prompt quali blocchi usano dati raw e quali applicano filtri, aggregazioni o calcoli derivati."
+    );
 
     $masterPrompt = implode("\n", $sections);
 }

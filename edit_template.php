@@ -92,6 +92,23 @@ if ($templateId <= 0) {
                     <textarea id="prompt" name="prompt"></textarea>
                 </div>
 
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="is_public">Visibilità</label>
+                        <select id="is_public" name="is_public">
+                            <option value="0">Privato</option>
+                            <option value="1">Pubblico</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="is_hidden">Stato</label>
+                        <select id="is_hidden" name="is_hidden">
+                            <option value="0">Visibile</option>
+                            <option value="1">Nascosto</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="inline-actions">
                     <button type="submit">Salva modifiche</button>
                     <a href="templates.php" class="btn-secondary">Annulla</a>
@@ -128,6 +145,8 @@ if ($templateId <= 0) {
                 }
                 document.getElementById('title').value = res.data.template.title || '';
                 document.getElementById('prompt').value = res.data.template.prompt || '';
+                document.getElementById('is_public').value = Number(res.data.template.is_public || 0) === 1 ? '1' : '0';
+                document.getElementById('is_hidden').value = Number(res.data.template.is_hidden || 0) === 1 ? '1' : '0';
             }).catch(function () {
                 showMessage('Errore di rete durante caricamento template.', true);
             });
@@ -138,13 +157,15 @@ if ($templateId <= 0) {
             const id = document.getElementById('template_id').value;
             const title = document.getElementById('title').value.trim();
             const prompt = document.getElementById('prompt').value.trim();
+            const isPublic = Number(document.getElementById('is_public').value) === 1 ? 1 : 0;
+            const isHidden = Number(document.getElementById('is_hidden').value) === 1 ? 1 : 0;
 
             if (!title) {
                 showMessage('Il titolo del template è obbligatorio.', true);
                 return;
             }
 
-            api('update_template', { id: id, title: title, prompt: prompt }).then(function (res) {
+            api('update_template', { id: id, title: title, prompt: prompt, is_public: isPublic, is_hidden: isHidden }).then(function (res) {
                 if (!res.success) {
                     showMessage(res.message || 'Errore aggiornamento template.', true);
                     return;
