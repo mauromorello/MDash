@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             header('Location: dashboards.php?deleted=1');
             exit;
         } catch (PDOException $e) {
-            $error = 'Errore durante l\'eliminazione della dashboard: ' . $e->getMessage();
+            $error = 'Error while deleting the dashboard: ' . $e->getMessage();
         }
     }
 }
@@ -99,30 +99,30 @@ if ($pdo) {
         );
         $dashboards = $stmt->fetchAll();
     } catch (PDOException $e) {
-        $error = 'Errore durante la lettura delle dashboard: ' . $e->getMessage();
+        $error = 'Error while loading dashboards: ' . $e->getMessage();
     }
 }
 
 if (!empty($_GET['created'])) {
-    $message = 'Dashboard creata correttamente.';
+    $message = 'Dashboard created successfully.';
 } elseif (!empty($_GET['deleted'])) {
-    $message = 'Dashboard eliminata correttamente.';
+    $message = 'Dashboard deleted successfully.';
 } elseif (!empty($_GET['updated'])) {
-    $message = 'Dashboard aggiornata correttamente.';
+    $message = 'Dashboard updated successfully.';
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elenco dashboard</title>
+    <title>Dashboard List</title>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
     <div class="user-ribbon">
         <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>
                 <a href="admin.php">Admin Console</a>
@@ -134,10 +134,13 @@ if (!empty($_GET['created'])) {
     <div class="page">
         <div class="topbar">
             <div>
-                <h1>Elenco dashboard</h1>
-                <div class="meta">Gestisci le dashboard create, controlla i prompt e modifica i dettagli.</div>
+                <h1>Dashboard List</h1>
+                <div class="meta">Manage created dashboards, inspect prompts, and edit details.</div>
             </div>
-            <a href="dashboard_builder.php">Nuova dashboard</a>
+            <div class="inline-actions">
+                <a href="dashboard_builder.php">New dashboard</a>
+                <a href="results.php">Generated results</a>
+            </div>
         </div>
 
         <?php if ($message): ?>
@@ -148,8 +151,8 @@ if (!empty($_GET['created'])) {
             <div class="message error"><?php echo h($error); ?></div>
         <?php elseif (empty($dashboards)): ?>
             <div class="card">
-                <p>Non sono ancora presenti dashboard.</p>
-                <p><a href="dashboard_builder.php">Crea la prima dashboard</a></p>
+                <p>No dashboards have been created yet.</p>
+                <p><a href="dashboard_builder.php">Create the first dashboard</a></p>
             </div>
         <?php else: ?>
             <div class="table-wrap">
@@ -157,12 +160,12 @@ if (!empty($_GET['created'])) {
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Titolo</th>
-                            <th>Data creazione</th>
-                            <th>Datasource</th>
-                            <th>ID makeup</th>
-                            <th>ID template</th>
-                            <th>Azioni</th>
+                            <th>Title</th>
+                            <th>Created At</th>
+                            <th>Data Source</th>
+                            <th>Makeup ID</th>
+                            <th>Template ID</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -185,13 +188,13 @@ if (!empty($_GET['created'])) {
                                 <td><?php echo h($dashboard['id_template']); ?></td>
                                 <td>
                                     <div class="inline-actions">
-                                        <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Genera prompt</a>
+                                        <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Generate prompt</a>
                                         <button type="button" class="secondary preview-toggle" data-target="preview-<?php echo h($dashboard['id']); ?>">Preview prompt</button>
-                                        <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Modifica</a>
-                                        <form method="post" onsubmit="return confirm('Eliminare questa dashboard?');" style="display:inline;">
+                                        <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Edit</a>
+                                        <form method="post" onsubmit="return confirm('Delete this dashboard?');" style="display:inline;">
                                             <input type="hidden" name="action" value="delete_dashboard">
                                             <input type="hidden" name="id" value="<?php echo h($dashboard['id']); ?>">
-                                            <button type="submit" class="btn-danger">Elimina</button>
+                                            <button type="submit" class="btn-danger">Delete</button>
                                         </form>
                                     </div>
                                 </td>

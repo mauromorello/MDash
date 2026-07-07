@@ -103,6 +103,10 @@ function h($value) {
                         <p class="main-action-desc">Review, edit, and generate prompts from saved dashboards.</p>
                     </div>
                     <div class="main-action-item">
+                        <a href="results.php" class="btn btn-secondary">Generated Results</a>
+                        <p class="main-action-desc">Open the list of generated dashboards and their saved outputs.</p>
+                    </div>
+                    <div class="main-action-item">
                         <a href="final.php" class="btn btn-primary">Ready Dashboards</a>
                         <p class="main-action-desc">Open your generated dashboard outputs ready to use.</p>
                     </div>

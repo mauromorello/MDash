@@ -103,6 +103,74 @@ function getNextResultId(PDO $pdo): int {
     return (int)($stmt->fetch(PDO::FETCH_ASSOC)['next_id'] ?? 1);
 }
 
+function ensureDirectory(string $directory): void {
+    if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+        throw new RuntimeException('Unable to create output directory.');
+    }
+}
+
+function xmlEscape(string $value): string {
+    return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+}
+
+function truncateText(string $value, int $maxLength): string {
+    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+        return mb_strlen($value, 'UTF-8') > $maxLength ? mb_substr($value, 0, $maxLength - 1, 'UTF-8') . '…' : $value;
+    }
+
+    return strlen($value) > $maxLength ? substr($value, 0, $maxLength - 1) . '…' : $value;
+}
+
+function buildThumbnailSvg(array $context): string {
+    $title = truncateText((string)($context['title'] ?? 'Dashboard'), 42);
+    $templateTitle = truncateText((string)($context['template_title'] ?? 'No template'), 42);
+    $ownerName = truncateText((string)($context['owner_name'] ?? 'Unknown owner'), 42);
+    $resultId = (int)($context['result_id'] ?? 0);
+    $createdAt = truncateText((string)($context['created_at'] ?? date('Y-m-d H:i:s')), 32);
+
+    $lines = [
+        $title,
+        'Template: ' . $templateTitle,
+        'Owner: ' . $ownerName,
+        'Result #' . $resultId,
+        $createdAt,
+    ];
+
+    $textY = 150;
+    $textChunks = '';
+    foreach ($lines as $line) {
+        $textChunks .= '<text x="80" y="' . $textY . '" fill="#e2e8f0" font-size="36" font-family="Arial, Helvetica, sans-serif">' . xmlEscape($line) . '</text>';
+        $textY += 62;
+    }
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-label="Dashboard thumbnail">'
+        . '<defs>'
+        . '<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">'
+        . '<stop offset="0%" stop-color="#0f172a"/>'
+        . '<stop offset="100%" stop-color="#2563eb"/>'
+        . '</linearGradient>'
+        . '<linearGradient id="card" x1="0" y1="0" x2="1" y2="1">'
+        . '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>'
+        . '<stop offset="100%" stop-color="#ffffff" stop-opacity="0.06"/>'
+        . '</linearGradient>'
+        . '</defs>'
+        . '<rect width="1200" height="675" rx="36" fill="url(#bg)"/>'
+        . '<circle cx="1030" cy="130" r="110" fill="#60a5fa" fill-opacity="0.18"/>'
+        . '<circle cx="980" cy="540" r="160" fill="#22c55e" fill-opacity="0.10"/>'
+        . '<rect x="60" y="60" width="1080" height="555" rx="30" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.12"/>'
+        . '<text x="80" y="115" fill="#ffffff" font-size="34" font-weight="700" font-family="Arial, Helvetica, sans-serif">Generated Dashboard</text>'
+        . $textChunks
+        . '<rect x="760" y="110" width="300" height="24" rx="12" fill="#ffffff" fill-opacity="0.25"/>'
+        . '<rect x="760" y="160" width="220" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '<rect x="760" y="210" width="260" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '<rect x="760" y="260" width="200" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '<rect x="760" y="310" width="240" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '<rect x="760" y="360" width="280" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '<rect x="760" y="410" width="180" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '<rect x="760" y="460" width="280" height="24" rx="12" fill="#ffffff" fill-opacity="0.18"/>'
+        . '</svg>';
+}
+
 function callGeminiGenerateHtml(string $finalPrompt): string {
     /*
      Gemini API requirements:
@@ -251,17 +319,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $generatedHtml = callGeminiGenerateHtml((string)($_POST['master_prompt'] ?? $masterPrompt));
 
             $resultsDir = __DIR__ . DIRECTORY_SEPARATOR . 'results';
-            if (!is_dir($resultsDir)) {
-                mkdir($resultsDir, 0777, true);
-            }
 
             $resultId = getNextResultId($pdo);
-            $fileName = 'result_' . $resultId . '_' . date('Ymd_His') . '.html';
-            $diskPath = $resultsDir . DIRECTORY_SEPARATOR . $fileName;
+            $resultDir = $resultsDir . DIRECTORY_SEPARATOR . $resultId;
+            ensureDirectory($resultDir);
+
+            $fileName = 'dashboard.html';
+            $diskPath = $resultDir . DIRECTORY_SEPARATOR . $fileName;
             file_put_contents($diskPath, $generatedHtml);
 
-            $relativePath = 'results/' . $fileName;
-            $thumbnailPath = '';
+            $relativePath = 'results/' . $resultId . '/' . $fileName;
+            $thumbnailPath = 'results/' . $resultId . '/thumbnail.svg';
+            file_put_contents(
+                $resultDir . DIRECTORY_SEPARATOR . 'thumbnail.svg',
+                buildThumbnailSvg([
+                    'title' => (string)($dashboard['title'] ?? 'Dashboard'),
+                    'template_title' => (string)($template['title'] ?? 'No template'),
+                    'owner_name' => (string)($user['username'] ?? 'Unknown owner'),
+                    'result_id' => $resultId,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ])
+            );
             $idTemplate = (int)($dashboard['id_template'] ?? 0);
             $idOwner = (int)$user['id'];
             $isPublic = (int)($dashboard['is_public'] ?? 0);
