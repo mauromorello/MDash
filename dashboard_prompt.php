@@ -64,6 +64,7 @@ $pdo = null;
 $error = '';
 $dashboard = null;
 $upload = null;
+$template = null;
 $dashboardId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $promptTitle = '';
 $masterPrompt = '';
@@ -79,7 +80,7 @@ try {
         ]
     );
 } catch (PDOException $e) {
-    $error = 'Errore database: ' . $e->getMessage();
+    $error = 'Database error: ' . $e->getMessage();
 }
 
 if ($pdo && $dashboardId > 0) {
@@ -93,56 +94,52 @@ if ($pdo && $dashboardId > 0) {
             $uploadStmt->execute([(int)$dashboard['id_datasource']]);
             $upload = $uploadStmt->fetch();
         }
+
+        if ($dashboard && !empty($dashboard['id_template'])) {
+            $templateStmt = $pdo->prepare(
+                'SELECT t.id, t.title, t.prompt, t.id_owner, t.is_public, t.is_hidden, u.username AS owner_username
+                 FROM templates t
+                 LEFT JOIN users u ON u.id = t.id_owner
+                 WHERE t.id = ? AND (t.id_owner = ? OR t.is_public = 1) AND t.is_hidden = 0
+                 LIMIT 1'
+            );
+            $templateStmt->execute([(int)$dashboard['id_template'], (int)$user['id']]);
+            $template = $templateStmt->fetch();
+        }
     } catch (PDOException $e) {
-        $error = 'Errore durante il caricamento dei dati: ' . $e->getMessage();
+        $error = 'Error while loading data: ' . $e->getMessage();
     }
 }
 
 if (!$dashboard && $error === '') {
-    $error = 'Dashboard non trovata.';
+    $error = 'Dashboard not found.';
 }
 
 if ($dashboard) {
-    $promptTitle = trim((string)($dashboard['title'] ?? 'Dashboard senza titolo'));
-    $uploadAbsolutePath = $upload && !empty($upload['path']) ? buildAbsolutePath((string)$upload['path']) : 'Datasource non collegata';
+    $promptTitle = trim((string)($dashboard['title'] ?? 'Dashboard without title'));
 
     $sections = [];
-    $sections[] = normalizeSection('Titolo dashboard', $promptTitle);
+    $sections[] = normalizeSection('Dashboard title', $promptTitle);
     $sections[] = normalizeSection(
-        'Base di dati',
-        "Usa questa base dati come sorgente primaria per costruire la dashboard.\n" .
-        "Percorso completo del file: " . $uploadAbsolutePath . "\n" .
-        "File: " . ($upload['filename'] ?? 'N/D') . "\n" .
-        "Descrizione breve: " . ($upload['description'] ?? '') . "\n" .
-        "Descrizione lunga: " . ($upload['long_description'] ?? '')
-    );
-    $sections[] = normalizeSection(
-        'Descrizione dei dati e gestione',
-        "Prompt dati 1:\n" . ($upload['prompt_1'] ?? '') . "\n\n" .
-        "Prompt dati 2:\n" . ($upload['prompt_2'] ?? '') . "\n\n" .
-        "Tag:\n" . ($upload['tags'] ?? '')
-    );
-    $sections[] = normalizeSection(
-        'Prompt dashboard',
+        'Dashboard prompt',
         "Data filter prompt:\n" . ($dashboard['data_filter_prompt'] ?? '') . "\n\n" .
         "Data manipulation prompt:\n" . ($dashboard['data_manipulation_prompt'] ?? '') . "\n\n" .
         "Dashboard prompt 1:\n" . ($dashboard['dashboard_prompt_1'] ?? '') . "\n\n" .
         "Dashboard prompt 2:\n" . ($dashboard['dashboard_prompt_2'] ?? '')
     );
     $sections[] = normalizeSection(
-        'Template e makeup futuri',
-        "ID template da usare in futuro: " . (string)($dashboard['id_template'] ?? 0) . "\n" .
-        "ID makeup da usare in futuro: " . (string)($dashboard['id_makeup'] ?? 0) . "\n" .
-        "Questa sezione per ora è solo informativa e servirà per comporre il master prompt finale."
+        'Template',
+        "Template ID: " . (string)($dashboard['id_template'] ?? 0) . "\n" .
+        "Template title: " . ($template['title'] ?? 'N/A') . "\n\n" .
+        ($template && !empty($template['prompt']) ? (string)$template['prompt'] : '')
     );
     $sections[] = normalizeSection(
-        'Istruzioni operative verbose',
-        "Base dati: descrivi sempre sorgente, percorso, formato del file e contesto dei dati prima di elaborare la dashboard.\n\n" .
-        "Lettura dei campi: esplicita per ogni campo nome, significato, tipo informativo, eventuale unità di misura e regole di pulizia/normalizzazione.\n\n" .
-        "Costruzione file fisico (template): genera output HTML completo e autosufficiente, con struttura chiara, CSS coerente e script minimi necessari all'interattività.\n\n" .
-        "Layout dashboard: organizza sezioni con una gerarchia visiva chiara (header, KPI, grafici, tabelle, note), con attenzione alla responsività su desktop e mobile.\n\n" .
-        "Regole qualitative: usa etichette in italiano, legende comprensibili, fallback per dataset vuoti e segnala eventuali assunzioni interpretative fatte sui dati.\n\n" .
-        "Tracciabilità trasformazioni: indica nel prompt quali blocchi usano dati raw e quali applicano filtri, aggregazioni o calcoli derivati."
+        'Makeup',
+        ''
+    );
+    $sections[] = normalizeSection(
+        'Error output',
+        $error !== '' ? $error : 'None'
     );
 
     $masterPrompt = implode("\n", $sections);
@@ -154,11 +151,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard prompt</title>
+    <title>Dashboard Prompt</title>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
@@ -177,9 +174,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         <div class="topbar">
             <div>
                 <h1>Dashboard prompt</h1>
-                <div class="meta">Genera e rifinisci il prompt che verrà poi inviato alla AI.</div>
+                <div class="meta">Generate and refine the final prompt that will be sent to the AI.</div>
             </div>
-            <a href="dashboards.php">Torna all'elenco dashboard</a>
+            <a href="dashboards.php">Back to dashboard list</a>
         </div>
 
         <?php if ($error): ?>
@@ -191,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
                     <input type="hidden" name="id" value="<?php echo h($dashboardId); ?>">
 
                     <div class="field">
-                        <label for="prompt_title">Titolo</label>
+                        <label for="prompt_title">Title</label>
                         <input type="text" id="prompt_title" name="prompt_title" value="<?php echo h($promptTitle); ?>">
                     </div>
 
@@ -201,9 +198,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
                     </div>
 
                     <div class="inline-actions">
-                        <button type="submit">Aggiorna anteprima</button>
-                        <button type="button" class="secondary" id="copyPromptBtn">Copia prompt</button>
-                        <a href="edit_dashboard.php?id=<?php echo h($dashboardId); ?>" class="btn-secondary">Modifica dashboard</a>
+                        <button type="submit">Refresh preview</button>
+                        <button type="button" class="secondary" id="copyPromptBtn">Copy prompt</button>
+                        <a href="edit_dashboard.php?id=<?php echo h($dashboardId); ?>" class="btn-secondary">Edit dashboard</a>
                     </div>
                 </form>
             </div>
