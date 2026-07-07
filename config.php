@@ -3,7 +3,7 @@ $key = $_GET['key'] ?? $_POST['key'] ?? '';
 $expectedKey = 'lskfdjsdkfjeijrnsdnfmndmf';
 if ($key !== $expectedKey) {
     http_response_code(403);
-    echo '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Config access denied</title></head><body><a href="main.php" style="display:inline-block;margin:12px 0;color:#111827;text-decoration:none;font-weight:700;">Mdash</a><h1>Accesso non autorizzato</h1><p>Parametro key mancante o errato.</p></body></html>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Config access denied</title><link rel="stylesheet" href="assets/app.css"></head><body><div class="config-page"><a href="main.php" class="brand-home">Mdash</a><h1>Unauthorized access</h1><p>Missing or invalid key parameter.</p></div></body></html>';
     exit;
 }
 
@@ -12,9 +12,9 @@ $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
 $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
-$pdoStatus = 'Non testato';
+$pdoStatus = 'Not tested';
 $pdoError = '';
-$userTableStatus = 'Non verificata';
+$userTableStatus = 'Not checked';
 $userTableExists = false;
 $userTableCreateMessage = '';
 try {
@@ -24,7 +24,7 @@ try {
     ]);
     $pdoStatus = 'OK';
 } catch (Exception $e) {
-    $pdoStatus = 'Errore';
+    $pdoStatus = 'Error';
     $pdoError = $e->getMessage();
 }
 
@@ -32,15 +32,15 @@ if ($pdoStatus === 'OK') {
     try {
         $stmt = $pdo->query("SHOW TABLES LIKE 'users'");
         $userTableExists = (bool)$stmt->fetchColumn();
-        $userTableStatus = $userTableExists ? 'Esiste' : 'Non esiste';
+        $userTableStatus = $userTableExists ? 'Exists' : 'Missing';
     } catch (Exception $e) {
-        $userTableStatus = 'Errore verifica: ' . $e->getMessage();
+        $userTableStatus = 'Check error: ' . $e->getMessage();
     }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_users_table') {
     if ($pdoStatus !== 'OK') {
-        $userTableCreateMessage = 'Impossibile creare la tabella perché il DB non è accessibile: ' . $pdoError;
+        $userTableCreateMessage = 'Cannot create table because DB is not reachable: ' . $pdoError;
     } else {
         try {
             $pdo->exec(
@@ -89,14 +89,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $hash = password_hash('zxcasd', PASSWORD_DEFAULT);
                 $ins = $pdo->prepare('INSERT INTO users (username, password_hash, email, is_admin, is_enabled, created_at, updated_at) VALUES (?, ?, ?, 1, 1, NOW(), NOW())');
                 $ins->execute(['mimmoz', $hash, 'mimmoz@example.com']);
-                $userTableCreateMessage = 'Tabella users creata e utente admin creato.';
+                $userTableCreateMessage = 'Users table created and initial admin user created.';
             } else {
-                $userTableCreateMessage = 'Tabella users creata (o esistente) e utente admin già presente.';
+                $userTableCreateMessage = 'Users table ready (created or existing) and admin user already present.';
             }
             $userTableExists = true;
-            $userTableStatus = 'Esiste';
+            $userTableStatus = 'Exists';
         } catch (Exception $e) {
-            $userTableCreateMessage = 'Errore creazione tabella users: ' . $e->getMessage();
+            $userTableCreateMessage = 'Users table creation error: ' . $e->getMessage();
         }
     }
 }
@@ -148,7 +148,7 @@ if ($pdoStatus === 'OK') {
             $tableColumns[$table] = $colsStmt->fetchAll(PDO::FETCH_ASSOC);
         }
     } catch (Exception $e) {
-        $tables = ['__error__' => 'Impossibile leggere le tabelle: ' . $e->getMessage()];
+        $tables = ['__error__' => 'Unable to read tables: ' . $e->getMessage()];
     }
 }
 
@@ -164,52 +164,41 @@ function h($value) {
 }
 
 ?><!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Config helper</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .brand-home { display:inline-block; margin-bottom: 10px; color:#111827; text-decoration:none; font-weight:700; }
-        .brand-home:hover { text-decoration: underline; }
-        table { border-collapse: collapse; width: 100%; max-width: 1000px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-        th { background: #f4f4f4; }
-        .status-ok { color: green; font-weight: bold; }
-        .status-error { color: darkred; font-weight: bold; }
-        .panel { margin-bottom: 20px; }
-        .panel h2 { margin-bottom: 8px; }
-        .log-box { background:#111; color:#eee; padding:12px; max-height:300px; overflow:auto; white-space:pre-wrap; font-family:Menlo, Monaco, monospace; border:1px solid #333; }
-    </style>
+    <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
+<div class="config-page">
     <a href="main.php" class="brand-home">Mdash</a>
-    <h1>Configurazione tecnica</h1>
-    <p>Questa pagina mostra i parametri tecnici utilizzati dal sito.</p>
+    <h1>Technical configuration</h1>
+    <p>This page shows technical runtime parameters used by the site.</p>
 
     <div class="panel">
-        <h2>Stato DB</h2>
+        <h2>Database status</h2>
         <table>
-            <tr><th>Attivo</th><td><?php echo $pdoStatus === 'OK' ? '<span class="status-ok">Sì</span>' : '<span class="status-error">No</span>'; ?></td></tr>
+            <tr><th>Active</th><td><?php echo $pdoStatus === 'OK' ? '<span class="status-ok">Yes</span>' : '<span class="status-error">No</span>'; ?></td></tr>
             <tr><th>Host</th><td><?php echo h($dbHost); ?></td></tr>
-            <tr><th>Nome DB</th><td><?php echo h($dbName); ?></td></tr>
-            <tr><th>Utente DB</th><td><?php echo h($dbUser); ?></td></tr>
-            <tr><th>Password DB</th><td><code><?php echo h($dbPass); ?></code></td></tr>
+            <tr><th>Database name</th><td><?php echo h($dbName); ?></td></tr>
+            <tr><th>Database user</th><td><?php echo h($dbUser); ?></td></tr>
+            <tr><th>Database password</th><td><code><?php echo h($dbPass); ?></code></td></tr>
             <tr><th>PDO status</th><td><?php echo h($pdoStatus); ?></td></tr>
-            <?php if ($pdoError): ?><tr><th>Errore connessione</th><td><code><?php echo h($pdoError); ?></code></td></tr><?php endif; ?>
+            <?php if ($pdoError): ?><tr><th>Connection error</th><td><code><?php echo h($pdoError); ?></code></td></tr><?php endif; ?>
         </table>
     </div>
 
     <div class="panel">
-        <h2>Tabella utenti</h2>
+        <h2>Users table</h2>
         <table>
-            <tr><th>Stato tabella <code>users</code></th><td><?php echo h($userTableStatus); ?></td></tr>
+            <tr><th><code>users</code> table status</th><td><?php echo h($userTableStatus); ?></td></tr>
         </table>
-        <form method="post" style="margin-top:10px;">
+        <form method="post" class="config-form-inline">
             <input type="hidden" name="key" value="<?php echo h($key); ?>">
             <input type="hidden" name="action" value="create_users_table">
-            <button type="submit">Crea tabella users e primo admin</button>
+            <button type="submit">Create users table and initial admin</button>
         </form>
         <?php if ($userTableCreateMessage): ?>
             <p><?php echo h($userTableCreateMessage); ?></p>
@@ -217,7 +206,7 @@ function h($value) {
     </div>
 
     <div class="panel">
-        <h2>Info server</h2>
+        <h2>Server info</h2>
         <table>
             <tr><th>Apache / server</th><td><?php echo h($apacheStatus); ?></td></tr>
             <?php foreach ($serverInfo as $label => $value): ?>
@@ -227,31 +216,31 @@ function h($value) {
     </div>
 
     <div class="panel">
-        <h2>Parametri ambiente</h2>
+        <h2>Environment parameters</h2>
         <table>
-            <tr><th>Path root del sito</th><td><?php echo h($_SERVER['DOCUMENT_ROOT'] ?? 'N/A'); ?></td></tr>
-            <tr><th>Path file corrente</th><td><?php echo h(__FILE__); ?></td></tr>
-            <tr><th>Path working directory</th><td><?php echo h(getcwd()); ?></td></tr>
+            <tr><th>Site root path</th><td><?php echo h($_SERVER['DOCUMENT_ROOT'] ?? 'N/A'); ?></td></tr>
+            <tr><th>Current file path</th><td><?php echo h(__FILE__); ?></td></tr>
+            <tr><th>Working directory path</th><td><?php echo h(getcwd()); ?></td></tr>
             <tr><th>Server software</th><td><?php echo h($_SERVER['SERVER_SOFTWARE'] ?? 'N/A'); ?></td></tr>
             <tr><th>PHP ini file</th><td><?php echo h(php_ini_loaded_file() ?: 'N/A'); ?></td></tr>
         </table>
     </div>
 
     <div class="panel">
-        <h2>Liste tabelle e prime 10 righe</h2>
+        <h2>Tables and first 10 rows</h2>
         <?php if (isset($tables['__error__'])): ?>
             <p class="status-error"><?php echo h($tables['__error__']); ?></p>
         <?php elseif (empty($tables)): ?>
-            <p>Nessuna tabella trovata o DB non accessibile.</p>
+            <p>No tables found or DB not accessible.</p>
         <?php else: ?>
             <?php foreach ($tables as $tableName => $rows): ?>
                 <h3><?php echo h($tableName); ?></h3>
                 <?php if (!empty($tableColumns[$tableName])): ?>
-                    <div style="margin-bottom:12px;">
-                        <strong>Campi e tipi:</strong>
+                    <div class="table-columns-box">
+                        <strong>Columns and types:</strong>
                         <table>
                             <thead>
-                                <tr><th>Campo</th><th>Tipo</th></tr>
+                                <tr><th>Field</th><th>Type</th></tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($tableColumns[$tableName] as $col): ?>
@@ -264,10 +253,10 @@ function h($value) {
                         </table>
                     </div>
                 <?php else: ?>
-                    <p>Impossibile leggere i campi della tabella.</p>
+                    <p>Unable to read table columns.</p>
                 <?php endif; ?>
                 <?php if (empty($rows)): ?>
-                    <p>Nessuna riga presente.</p>
+                    <p>No rows available.</p>
                 <?php else: ?>
                     <table>
                         <thead>
@@ -293,10 +282,10 @@ function h($value) {
     </div>
 
     <div class="panel">
-        <h2>Log deploy</h2>
+        <h2>Deploy log</h2>
         <div class="log-box">
             <?php if (empty($deployLogLines)): ?>
-                <p>Nessun file deploy_log.txt trovato o file vuoto.</p>
+                <p>No deploy_log.txt found or file is empty.</p>
             <?php else: ?>
                 <?php foreach ($deployLogLines as $line): ?>
                     <?php echo h($line); ?><br>
@@ -304,5 +293,6 @@ function h($value) {
             <?php endif; ?>
         </div>
     </div>
+</div>
 </body>
 </html>

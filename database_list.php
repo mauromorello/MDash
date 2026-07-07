@@ -20,7 +20,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
         }
@@ -109,26 +109,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 @rmdir($uploadDir);
             }
 
-            $message = 'Upload eliminato correttamente.';
+            $message = 'Upload deleted successfully.';
             header('Location: database_list.php?deleted=1');
             exit;
         }
     }
-    $message = 'Impossibile eliminare l\'upload.';
+    $message = 'Unable to delete upload.';
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elenco basi dati</title>
+    <title>Data Source List</title>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
     <div class="user-ribbon">
         <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>
                 <a href="admin.php">Admin Console</a>
@@ -140,10 +140,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="page">
         <div class="topbar">
             <div>
-                <h1>Elenco basi dati</h1>
-                <div class="meta">Mostra i tuoi file e quelli pubblici di altri utenti.</div>
+                <h1>Data source list</h1>
+                <div class="meta">Browse your files and public files shared by other users.</div>
             </div>
-            <a href="main.php">Torna alla home</a>
+            <a href="main.php">Back to home</a>
         </div>
 
         <?php if ($message): ?>
@@ -151,9 +151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         <?php endif; ?>
 
         <?php if (!empty($error)): ?>
-            <p class="message error">Errore di accesso al database: <?php echo h($error); ?></p>
+            <p class="message error">Database access error: <?php echo h($error); ?></p>
         <?php elseif (empty($uploads)): ?>
-            <p class="empty">Non hai ancora caricato file.</p>
+            <p class="empty">No uploaded files yet.</p>
         <?php else: ?>
             <div class="table-wrap">
                 <table>
@@ -161,12 +161,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         <tr>
                             <th>ID</th>
                             <th>File</th>
-                            <th>Proprietario</th>
-                            <th>Descrizione</th>
+                            <th>Owner</th>
+                            <th>Description</th>
                             <th>Tag</th>
-                            <th>Visibilità</th>
-                            <th>Percorso</th>
-                            <th>Azioni</th>
+                            <th>Visibility</th>
+                            <th>Path</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -176,28 +176,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 <td>
                                     <?php echo h($row['filename']); ?>
                                     <?php if (!empty($row['path']) && is_file(__DIR__ . DIRECTORY_SEPARATOR . $row['path'])): ?>
-                                        <div><a href="<?php echo h($row['path']); ?>" target="_blank">Apri file</a></div>
+                                        <div><a href="<?php echo h($row['path']); ?>" target="_blank">Open file</a></div>
                                     <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ((int)$row['id_owner'] === (int)$user['id']): ?>
-                                        <span class="pill">Tu</span>
+                                        <span class="pill">You</span>
                                     <?php else: ?>
-                                        <?php echo h($row['owner_username'] ?: 'Utente #' . $row['id_owner']); ?>
+                                        <?php echo h($row['owner_username'] ?: 'User #' . $row['id_owner']); ?>
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo h($row['description'] ?: '-'); ?></td>
                                 <td><?php echo h($row['tags'] ?: '-'); ?></td>
-                                <td><span class="pill"><?php echo ((int)$row['is_public'] === 1) ? 'Pubblico' : 'Privato'; ?></span></td>
+                                <td><span class="pill"><?php echo ((int)$row['is_public'] === 1) ? 'Public' : 'Private'; ?></span></td>
                                 <td><?php echo h($row['path'] ?: '-'); ?></td>
                                 <td>
                                     <?php if ((int)$row['id_owner'] === (int)$user['id']): ?>
-                                        <div style="display:flex; flex-direction:column; gap:6px;">
-                                            <a href="edit_upload.php?id=<?php echo h($row['id']); ?>">Modifica</a>
-                                            <form method="post" onsubmit="return confirm('Eliminare questo upload, il file e la directory associati?');">
+                                        <div class="db-actions-stack">
+                                            <a href="edit_upload.php?id=<?php echo h($row['id']); ?>">Edit</a>
+                                            <form method="post" onsubmit="return confirm('Delete this upload with its file and directory?');">
                                                 <input type="hidden" name="action" value="delete_upload">
                                                 <input type="hidden" name="id" value="<?php echo h($row['id']); ?>">
-                                                <button type="submit" style="padding:6px 10px; font-size:0.9rem;">Elimina</button>
+                                                <button type="submit" class="btn-small">Delete</button>
                                             </form>
                                         </div>
                                     <?php else: ?>

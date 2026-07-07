@@ -21,7 +21,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'login_time' => $user['login_time'] ?? null,
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
@@ -506,7 +506,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
 
                 <div class="field">
                     <label for="master_prompt">Prompt</label>
-                    <textarea id="master_prompt" name="master_prompt" style="min-height: 520px;"><?php echo h($masterPrompt); ?></textarea>
+                    <textarea id="master_prompt" name="master_prompt" class="master-prompt-area"><?php echo h($masterPrompt); ?></textarea>
                 </div>
 
                 <div class="inline-actions">
@@ -536,7 +536,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
 
                 <div class="field">
                     <label for="generatedHtmlCode">Generated HTML source</label>
-                    <textarea id="generatedHtmlCode" readonly style="min-height: 360px;"><?php echo h($generatedHtml); ?></textarea>
+                    <textarea id="generatedHtmlCode" readonly class="generated-html-area"><?php echo h($generatedHtml); ?></textarea>
                 </div>
 
                 <?php if ($resultFilePath !== ''): ?>

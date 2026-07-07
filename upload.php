@@ -31,7 +31,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'login_time' => $user['login_time'] ?? null,
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
@@ -121,9 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'upload_file') {
         if (!$pdo) {
-            $message = 'Impossibile connettersi al database: ' . h($dbError);
+            $message = 'Unable to connect to database: ' . h($dbError);
         } elseif (empty($_FILES['file']['name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-            $message = 'Seleziona un file valido da caricare.';
+            $message = 'Select a valid file to upload.';
         } else {
             $baseName = pathinfo($_FILES['file']['name'], PATHINFO_FILENAME);
             $safeBaseName = preg_replace('/[^A-Za-z0-9._-]/', '_', $baseName) ?: 'file';
@@ -163,20 +163,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $updateStmt = $pdo->prepare('UPDATE uploads SET path = ? WHERE id = ?');
                     $updateStmt->execute([$relativePath, $uploadId]);
                     $step = 'finalize';
-                    $message = 'File caricato correttamente. Completa i campi richiesti.';
+                    $message = 'File uploaded successfully. Complete the required fields.';
                     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                         sendJson(true, $message, $uploadId);
                     }
                 } else {
                     $deleteStmt = $pdo->prepare('DELETE FROM uploads WHERE id = ?');
                     $deleteStmt->execute([$uploadId]);
-                    $message = 'Il file non è stato salvato. Riprova.';
+                    $message = 'The file was not saved. Please try again.';
                     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                         sendJson(false, $message);
                     }
                 }
             } catch (PDOException $e) {
-                $message = 'Errore durante il salvataggio del file: ' . $e->getMessage();
+                $message = 'Error while saving file: ' . $e->getMessage();
                 if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                     sendJson(false, $message);
                 }
@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $isPublic = (int)($_POST['is_public'] ?? 0);
 
         if (utf8Length($description) > 16000000 || utf8Length($tags) > 65000 || utf8Length($longDescription) > 16000000 || utf8Length($prompt1) > 16000000 || utf8Length($prompt2) > 16000000) {
-            $message = 'Alcuni campi sono troppo lunghi. Riduci il testo e riprova.';
+            $message = 'Some fields are too long. Reduce text and try again.';
         }
 
         if ($message === '' && $uploadId > 0) {
@@ -216,12 +216,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: main.php');
                 exit;
             } catch (PDOException $e) {
-                $message = 'Errore durante il salvataggio dei metadati: ' . $e->getMessage();
+                $message = 'Error while saving metadata: ' . $e->getMessage();
             }
         }
 
         if ($message === '') {
-            $message = 'Impossibile completare il salvataggio.';
+            $message = 'Unable to complete save.';
         }
     }
 }
@@ -237,36 +237,17 @@ if ($record) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload file</title>
     <link rel="stylesheet" href="assets/app.css">
-    <style>
-        body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; color: #222; }
-        .wrap { max-width: 900px; margin: 32px auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
-        h1 { margin-top: 0; }
-        .box { border: 1px solid #dfe5ef; border-radius: 10px; padding: 16px; margin-bottom: 20px; background: #fafcff; }
-        .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-        label { font-weight: 600; }
-        input[type="text"], input[type="file"], textarea, select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; }
-        textarea { min-height: 100px; resize: vertical; }
-        button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-size: 1rem; }
-        button.secondary { background: #64748b; }
-        .message { padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; background: #eff6ff; color: #1d4ed8; }
-        .message.error { background: #fef2f2; color: #b91c1c; }
-        .hint { color: #64748b; font-size: 0.95rem; margin-top: 6px; }
-        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        a { color: #2563eb; text-decoration: none; }
-        @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
-    </style>
 </head>
 <body>
     <div class="user-ribbon">
         <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>
                 <a href="admin.php">Admin Console</a>
@@ -275,10 +256,10 @@ if ($record) {
         </div>
     </div>
 
-    <div class="wrap">
+    <div class="page upload-wrap">
         <div class="topbar">
-            <h1>Carica un file</h1>
-            <a href="main.php">Torna alla home</a>
+            <h1>Upload file</h1>
+            <a href="main.php">Back to home</a>
         </div>
 
         <?php if ($message): ?>
@@ -290,63 +271,63 @@ if ($record) {
                 <form id="uploadForm" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="upload_file">
                     <div class="field">
-                        <label for="file">Seleziona file</label>
+                        <label for="file">Select file</label>
                         <input type="file" id="file" name="file" required>
-                        <div class="hint">Il file verrà salvato nella cartella uploads/id/filename.csv.</div>
+                        <div class="hint">The file will be stored in uploads/id/filename.csv.</div>
                     </div>
                     <div id="progressBox" class="progress-box">
-                        <div id="progressLabel">Upload in corso...</div>
+                        <div id="progressLabel">Upload in progress...</div>
                         <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
                         <div id="progressText" class="progress-text">0%</div>
                     </div>
-                    <button type="submit">Carica file</button>
+                    <button type="submit">Upload file</button>
                 </form>
             </div>
         <?php endif; ?>
 
         <?php if ($step === 'finalize' && $record): ?>
             <div class="box">
-                <h2>Completa la descrizione del file</h2>
-                <p>Record creato con ID <strong><?php echo h($record['id']); ?></strong>.</p>
+                <h2>Complete file details</h2>
+                <p>Record created with ID <strong><?php echo h($record['id']); ?></strong>.</p>
                 <form method="post">
                     <input type="hidden" name="action" value="save_metadata">
                     <input type="hidden" name="upload_id" value="<?php echo h($record['id']); ?>">
 
                     <div class="field">
-                        <label for="description">Descrizione breve</label>
-                        <input type="text" id="description" name="description" value="<?php echo h($record['description'] ?? ''); ?>" placeholder="Descrizione sintetica del contenuto">
+                        <label for="description">Short description</label>
+                        <input type="text" id="description" name="description" value="<?php echo h($record['description'] ?? ''); ?>" placeholder="Short summary of file content">
                     </div>
 
                     <div class="field">
                         <label for="tags">Tag</label>
-                        <input type="text" id="tags" name="tags" value="<?php echo h($record['tags'] ?? ''); ?>" placeholder="es. clienti, ordini, report">
+                        <input type="text" id="tags" name="tags" value="<?php echo h($record['tags'] ?? ''); ?>" placeholder="e.g. customers, orders, reports">
                     </div>
 
                     <div class="field">
-                        <label for="long_description">Descrizione lunga</label>
-                        <textarea id="long_description" name="long_description" placeholder="Dettagli aggiuntivi sul file e sui suoi campi"><?php echo h($record['long_description'] ?? ''); ?></textarea>
+                        <label for="long_description">Long description</label>
+                        <textarea id="long_description" name="long_description" placeholder="Additional details about the file and its fields"><?php echo h($record['long_description'] ?? ''); ?></textarea>
                     </div>
 
                     <div class="row">
                         <div class="field">
                             <label for="prompt_1">Prompt 1</label>
-                            <textarea id="prompt_1" name="prompt_1" placeholder="Descrivi in modo discorsivo cosa contiene la tabella"><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
+                            <textarea id="prompt_1" name="prompt_1" placeholder="Describe in plain language what the table contains"><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
                         </div>
                         <div class="field">
                             <label for="prompt_2">Prompt 2</label>
-                            <textarea id="prompt_2" name="prompt_2" placeholder="Descrivi dettagliatamente tutti i campi presenti"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
+                            <textarea id="prompt_2" name="prompt_2" placeholder="Describe all fields in detail"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
                         </div>
                     </div>
 
                     <div class="field">
-                        <label for="is_public">Visibilità</label>
+                        <label for="is_public">Visibility</label>
                         <select id="is_public" name="is_public">
-                            <option value="0"<?php echo ((int)($record['is_public'] ?? 0) === 0) ? ' selected' : ''; ?>>Privato</option>
-                            <option value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' selected' : ''; ?>>Pubblico</option>
+                            <option value="0"<?php echo ((int)($record['is_public'] ?? 0) === 0) ? ' selected' : ''; ?>>Private</option>
+                            <option value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' selected' : ''; ?>>Public</option>
                         </select>
                     </div>
 
-                    <button type="submit">Salva e torna alla home</button>
+                    <button type="submit">Save and return home</button>
                 </form>
             </div>
         <?php endif; ?>
@@ -370,7 +351,7 @@ if ($record) {
                 progressBox.style.display = 'block';
                 progressFill.style.width = '0%';
                 progressText.textContent = '0%';
-                progressLabel.textContent = 'Upload in corso...';
+                progressLabel.textContent = 'Upload in progress...';
 
                 const xhr = new XMLHttpRequest();
                 xhr.upload.addEventListener('progress', function (e) {
@@ -387,16 +368,16 @@ if ($record) {
                             if (result && result.success && result.upload_id) {
                                 window.location.href = 'upload.php?id=' + result.upload_id;
                             } else {
-                                progressLabel.textContent = result && result.message ? result.message : 'Upload completato.';
-                                progressText.textContent = 'Fine';
+                                progressLabel.textContent = result && result.message ? result.message : 'Upload completed.';
+                                progressText.textContent = 'Done';
                                 window.location.reload();
                             }
                         } catch (e) {
-                            progressLabel.textContent = 'Risposta non valida dal server.';
-                            progressText.textContent = 'Errore';
+                            progressLabel.textContent = 'Invalid response from server.';
+                            progressText.textContent = 'Error';
                         }
                     } else {
-                        let serverMessage = 'Errore durante l\'upload.';
+                        let serverMessage = 'Upload error.';
                         try {
                             const result = JSON.parse(xhr.responseText);
                             if (result && result.message) {
@@ -404,12 +385,12 @@ if ($record) {
                             }
                         } catch (e) {}
                         progressLabel.textContent = serverMessage;
-                        progressText.textContent = 'Errore';
+                        progressText.textContent = 'Error';
                     }
                 });
                 xhr.addEventListener('error', function () {
-                    progressLabel.textContent = 'Errore di rete durante l\'upload.';
-                    progressText.textContent = 'Errore';
+                    progressLabel.textContent = 'Network error during upload.';
+                    progressText.textContent = 'Error';
                 });
 
                 const formData = new FormData(form);

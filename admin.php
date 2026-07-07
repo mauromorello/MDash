@@ -1,5 +1,4 @@
 <?php
-// pagina admin: controlla cookie/session per autenticazione
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -11,7 +10,7 @@ function getUserFromCookie(){
     if (!empty($_SESSION['user_id'])) {
         return [
             'id' => $_SESSION['user_id'],
-            'username' => $_SESSION['username'] ?? 'utente',
+            'username' => $_SESSION['username'] ?? 'user',
             'is_admin' => $_SESSION['is_admin'] ?? 0,
         ];
     }
@@ -20,7 +19,7 @@ function getUserFromCookie(){
     if (!is_array($u) || empty($u['id'])) return null;
     return [
         'id' => (int)$u['id'],
-        'username' => $u['username'] ?? 'utente',
+        'username' => $u['username'] ?? 'user',
         'is_admin' => (int)($u['is_admin'] ?? 0),
     ];
 }
@@ -31,71 +30,60 @@ if (!$me) {
     exit;
 }
 if ((int)$me['is_admin'] !== 1) {
-    echo "<h2>Accesso non autorizzato</h2><p>Hai bisogno dei privilegi admin.</p>";
+    echo "<h2>Unauthorized access</h2><p>You need admin privileges.</p>";
     exit;
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin</title>
+    <link rel="stylesheet" href="assets/app.css">
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.4.4/dist/css/tabulator.min.css">
-    <style>
-        body{font-family:Arial, Helvetica, sans-serif; padding:16px}
-        .brand-home { color:#111827; text-decoration:none; font-weight:700; font-size:1.05rem; }
-        .brand-home:hover { text-decoration:underline; }
-        .admin-header { margin-bottom: 12px; }
-        #tables button{display:block;margin:6px 0}
-        table{border-collapse:collapse;width:100%;}
-        table td, table th{border:1px solid #ccc;padding:6px}
-        .row-actions{white-space:nowrap}
-        input.cell-edit{width:100%}
-        #user-management { margin-top: 24px; border-top: 1px solid #ccc; padding-top: 16px; }
-        #createUserForm input { display: block; margin-bottom: 8px; padding: 6px; min-width: 200px; }
-        .tabulator-cell .tabulator-edit-select, .tabulator-cell .tabulator-edit-input { width: 100%; box-sizing: border-box; }
-    </style>
     <script src="https://unpkg.com/tabulator-tables@5.4.4/dist/js/tabulator.min.js"></script>
 </head>
 <body>
+    <div class="admin-page">
     <div class="admin-header"><a href="main.php" class="brand-home">Mdash</a></div>
     <h2>Admin Console</h2>
-    <p>Benvenuto, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>) — <button id="logoutBtn">Logout</button></p>
+    <p>Welcome, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>) - <button id="logoutBtn">Logout</button></p>
 
     <div id="user-management">
-        <h3>Gestione Utenti</h3>
+        <h3>User Management</h3>
         <div id="create-user-panel">
-            <h4>Crea nuovo utente</h4>
+            <h4>Create New User</h4>
             <form id="createUserForm">
                 <input type="text" id="newUsername" placeholder="Username" required>
-                <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
-                    <input type="password" id="newUserPassword" placeholder="Password" required autocomplete="new-password" style="flex:1; min-width:200px;">
-                    <button type="button" id="generatePasswordBtn">Genera password</button>
+                <div class="create-user-row">
+                    <input type="password" id="newUserPassword" class="flex-grow-input" placeholder="Password" required autocomplete="new-password">
+                    <button type="button" id="generatePasswordBtn">Generate Password</button>
                 </div>
                 <label><input type="checkbox" id="newIsAdmin"> Admin</label>
                 <label><input type="checkbox" id="newIsManager"> Manager</label>
-                <label><input type="checkbox" id="newIsEnabled" checked> Abilitato</label>
-                <button type="submit">Crea utente</button>
+                <label><input type="checkbox" id="newIsEnabled" checked> Enabled</label>
+                <button type="submit">Create User</button>
             </form>
             <div id="createUserMessage"></div>
         </div>
         <div id="usersTable"></div>
     </div>
 
-    <h3>Liste tabelle</h3>
-    <div id="tables"></div>
+    <h3>Database Tables</h3>
+    <div id="tables" class="admin-table-buttons"></div>
 
-    <h3 id="tableTitle" style="display:none">Tabella: <span id="tableName"></span></h3>
+    <h3 id="tableTitle" class="hidden">Table: <span id="tableName"></span></h3>
     <div id="tableSchema"></div>
     <div id="tableRows"></div>
+    </div>
 
     <script>
         function loadTables(){
             const cont = document.getElementById('tables');
-            cont.innerHTML = 'Caricamento...';
+            cont.innerHTML = 'Loading...';
             api('list_tables').then(res=>{
-                if(!res.success){ cont.innerHTML = 'Nessuna tabella: '+res.message; return; }
+                if(!res.success){ cont.innerHTML = 'No tables: '+res.message; return; }
                 cont.innerHTML = '';
                 res.data.tables.forEach(t=>{
                     const btn = document.createElement('button');
@@ -109,11 +97,11 @@ if ((int)$me['is_admin'] !== 1) {
         function loadTable(table){
             document.getElementById('tableTitle').style.display = 'block';
             document.getElementById('tableName').textContent = table;
-            document.getElementById('tableSchema').innerHTML = 'Caricamento schema...';
+            document.getElementById('tableSchema').innerHTML = 'Loading schema...';
             document.getElementById('tableRows').innerHTML = '';
             api('get_schema', {table: table}).then(res=>{
                 if(!res.success){ document.getElementById('tableSchema').innerText = res.message; return; }
-                let html = '<table><tr>' + res.data.columns.map(c=>'<th>'+c.Field+'</th>').join('') + '<th>Azioni</th></tr>';
+                let html = '<table class="plain-table"><tr>' + res.data.columns.map(c=>'<th>'+c.Field+'</th>').join('') + '<th>Actions</th></tr>';
                 html += '</table>';
                 document.getElementById('tableSchema').innerHTML = html;
                 loadRows(table);
@@ -121,20 +109,20 @@ if ((int)$me['is_admin'] !== 1) {
         }
 
         function loadRows(table){
-            document.getElementById('tableRows').innerHTML = 'Caricamento righe...';
+            document.getElementById('tableRows').innerHTML = 'Loading rows...';
             api('get_rows', {table: table, limit: 200}).then(res=>{
                 if(!res.success){ document.getElementById('tableRows').innerText = res.message; return; }
                 const rows = res.data.rows;
-                if (!rows || rows.length===0){ document.getElementById('tableRows').innerText = 'Nessun record.'; return; }
+                if (!rows || rows.length===0){ document.getElementById('tableRows').innerText = 'No records.'; return; }
                 const cols = Object.keys(rows[0]);
-                let html = '<table><thead><tr>' + cols.map(c=>'<th>'+c+'</th>').join('') + '<th>Azioni</th></tr></thead><tbody>';
+                let html = '<table class="plain-table"><thead><tr>' + cols.map(c=>'<th>'+c+'</th>').join('') + '<th>Actions</th></tr></thead><tbody>';
                 rows.forEach(r=>{
                     html += '<tr data-id="'+(r.id||'')+'">';
                     cols.forEach(c=>{
                         const val = r[c]===null? '': String(r[c]);
                         html += '<td><input class="cell-edit" data-col="'+c+'" value="'+val.replace(/"/g,'&quot;')+'" /></td>';
                     });
-                    html += '<td class="row-actions"><button class="save">Salva</button></td>';
+                    html += '<td class="row-actions"><button class="save">Save</button></td>';
                     html += '</tr>';
                 });
                 html += '</tbody></table>';
@@ -171,24 +159,24 @@ if ((int)$me['is_admin'] !== 1) {
         function initUsersTable(){
             usersTable = new Tabulator('#usersTable', {
                 layout: 'fitColumns',
-                placeholder: 'Nessun utente trovato',
+                placeholder: 'No users found',
                 reactiveData: true,
                 columns: [
                     {title:'ID', field:'id', width:60, headerSort:false},
                     {title:'Username', field:'username', editor:'input'},
-                    {title:'Password', field:'password', editor:'input', formatter:function(cell){ return ''; }, placeholder:'(nuova password)'},
+                    {title:'Password', field:'password', editor:'input', formatter:function(cell){ return ''; }, placeholder:'(new password)'},
                     {title:'Admin', field:'is_admin', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
                     {title:'Manager', field:'is_manager', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
-                    {title:'Abilitato', field:'is_enabled', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
-                    {title:'Creato', field:'created_at', headerSort:false},
-                    {title:'Aggiornato', field:'updated_at', headerSort:false},
-                    {title:'Azioni', field:'actions', headerSort:false, formatter:function(){ return '<button class="deleteBtn">Elimina</button>'; }, hozAlign:'center', cellClick:function(e, cell){
+                    {title:'Enabled', field:'is_enabled', formatter:'tickCross', editor:'tickCross', hozAlign:'center'},
+                    {title:'Created', field:'created_at', headerSort:false},
+                    {title:'Updated', field:'updated_at', headerSort:false},
+                    {title:'Actions', field:'actions', headerSort:false, formatter:function(){ return '<button class="deleteBtn">Delete</button>'; }, hozAlign:'center', cellClick:function(e, cell){
                         const row = cell.getRow();
                         const data = row.getData();
-                        if (!confirm('Eliminare l\'utente "' + data.username + '"?')) return;
+                        if (!confirm('Delete user "' + data.username + '"?')) return;
                         api('delete_user', {id:data.id}).then(res=>{
                             if(res.success){ row.delete(); }
-                            alert(res.message || 'Risposta server');
+                            alert(res.message || 'Server response');
                         });
                     }}
                 ],
@@ -207,7 +195,7 @@ if ((int)$me['is_admin'] !== 1) {
                     }
                     api('update_user', payload).then(res=>{
                         if (!res.success) {
-                            alert('Errore aggiornamento: ' + res.message);
+                            alert('Update error: ' + res.message);
                         } else {
                             loadUsers();
                         }
@@ -218,7 +206,7 @@ if ((int)$me['is_admin'] !== 1) {
 
         function loadUsers(){
             api('list_users').then(res=>{
-                if(!res.success){ document.getElementById('usersTable').textContent = 'Errore: '+res.message; return; }
+                if(!res.success){ document.getElementById('usersTable').textContent = 'Error: '+res.message; return; }
                 if (!usersTable) initUsersTable();
                 const rows = res.data.users.map(user => ({...user, password: ''}));
                 usersTable.setData(rows);
@@ -233,7 +221,7 @@ if ((int)$me['is_admin'] !== 1) {
             const isManager = document.getElementById('newIsManager').checked ? 1 : 0;
             const isEnabled = document.getElementById('newIsEnabled').checked ? 1 : 0;
             const msgDiv = document.getElementById('createUserMessage');
-            msgDiv.textContent = 'Creazione...';
+            msgDiv.textContent = 'Creating...';
 
             const fd = new FormData();
             fd.append('action', 'create_user');
@@ -247,15 +235,15 @@ if ((int)$me['is_admin'] !== 1) {
                 .then(r => r.json())
                 .then(res => {
                     if (res.success) {
-                        msgDiv.textContent = 'Utente creato con successo!';
+                        msgDiv.textContent = 'User created successfully!';
                         document.getElementById('createUserForm').reset();
                         loadUsers();
                     } else {
-                        msgDiv.textContent = 'Errore: ' + res.message;
+                        msgDiv.textContent = 'Error: ' + res.message;
                     }
                 })
                 .catch(err => {
-                    msgDiv.textContent = 'Errore di comunicazione col server.';
+                    msgDiv.textContent = 'Server communication error.';
                     console.error(err);
                 });
         }
@@ -276,7 +264,7 @@ if ((int)$me['is_admin'] !== 1) {
             const generated = generatePassword(16);
             passwordInput.value = generated;
             const msgDiv = document.getElementById('createUserMessage');
-            msgDiv.textContent = 'Password generata automaticamente.';
+            msgDiv.textContent = 'Password generated automatically.';
         });
 
         document.getElementById('logoutBtn').addEventListener('click', function(){

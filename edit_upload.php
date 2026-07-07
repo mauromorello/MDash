@@ -20,7 +20,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
         }
@@ -59,7 +59,7 @@ try {
         ]
     );
 } catch (PDOException $e) {
-    $message = 'Errore di connessione al database: ' . $e->getMessage();
+    $message = 'Database connection error: ' . $e->getMessage();
 }
 
 if ($pdo) {
@@ -85,9 +85,9 @@ if ($pdo) {
                     $uploadId,
                     (int)$user['id'],
                 ]);
-                $message = 'Upload aggiornato correttamente.';
+                $message = 'Upload updated successfully.';
             } else {
-                $message = 'Non sei autorizzato a modificare questo upload.';
+                $message = 'You are not allowed to edit this upload.';
             }
         }
     }
@@ -97,22 +97,22 @@ if ($pdo) {
     $upload = $stmt->fetch();
 
     if (!$upload) {
-        $message = 'Upload non trovato o non accessibile.';
+        $message = 'Upload not found or not accessible.';
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modifica upload</title>
+    <title>Edit upload</title>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
     <div class="user-ribbon">
         <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>
                 <a href="admin.php">Admin Console</a>
@@ -124,14 +124,14 @@ if ($pdo) {
     <div class="page">
         <div class="topbar">
             <div>
-                <h1>Modifica upload</h1>
-                <div class="meta">Aggiorna i dati del file caricato.</div>
+                <h1>Edit upload</h1>
+                <div class="meta">Update metadata for the uploaded file.</div>
             </div>
-            <a href="database_list.php">Torna all'elenco</a>
+            <a href="database_list.php">Back to list</a>
         </div>
 
         <?php if ($message): ?>
-            <div class="message<?php echo strpos($message, 'Errore') !== false || strpos($message, 'Non sei') !== false ? ' error' : ''; ?>">
+            <div class="message<?php echo strpos($message, 'error') !== false || strpos($message, 'not allowed') !== false ? ' error' : ''; ?>">
                 <?php echo h($message); ?>
             </div>
         <?php endif; ?>
@@ -143,13 +143,13 @@ if ($pdo) {
                     <input type="hidden" name="id" value="<?php echo h($upload['id']); ?>">
 
                     <div class="field">
-                        <label for="filename">Nome file</label>
+                        <label for="filename">File name</label>
                         <input type="text" id="filename" value="<?php echo h($upload['filename']); ?>" disabled>
-                        <div class="meta">Il nome del file non è modificabile da questa schermata.</div>
+                        <div class="meta">File name cannot be edited from this screen.</div>
                     </div>
 
                     <div class="field">
-                        <label for="description">Descrizione breve</label>
+                        <label for="description">Short description</label>
                         <input type="text" id="description" name="description" value="<?php echo h($upload['description'] ?? ''); ?>">
                     </div>
 
@@ -159,7 +159,7 @@ if ($pdo) {
                     </div>
 
                     <div class="field">
-                        <label for="long_description">Descrizione lunga</label>
+                        <label for="long_description">Long description</label>
                         <textarea id="long_description" name="long_description"><?php echo h($upload['long_description'] ?? ''); ?></textarea>
                     </div>
 
@@ -175,14 +175,14 @@ if ($pdo) {
                     </div>
 
                     <div class="field">
-                        <label for="is_public">Visibilità</label>
+                        <label for="is_public">Visibility</label>
                         <select id="is_public" name="is_public">
-                            <option value="0"<?php echo ((int)$upload['is_public'] === 0) ? ' selected' : ''; ?>>Privato</option>
-                            <option value="1"<?php echo ((int)$upload['is_public'] === 1) ? ' selected' : ''; ?>>Pubblico</option>
+                            <option value="0"<?php echo ((int)$upload['is_public'] === 0) ? ' selected' : ''; ?>>Private</option>
+                            <option value="1"<?php echo ((int)$upload['is_public'] === 1) ? ' selected' : ''; ?>>Public</option>
                         </select>
                     </div>
 
-                    <button type="submit">Salva modifiche</button>
+                    <button type="submit">Save changes</button>
                 </form>
             </div>
         <?php endif; ?>

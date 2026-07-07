@@ -20,7 +20,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
         }
@@ -191,7 +191,7 @@ if (!empty($_GET['created'])) {
                                         <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Generate prompt</a>
                                         <button type="button" class="secondary preview-toggle" data-target="preview-<?php echo h($dashboard['id']); ?>">Preview prompt</button>
                                         <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Edit</a>
-                                        <form method="post" onsubmit="return confirm('Delete this dashboard?');" style="display:inline;">
+                                        <form method="post" onsubmit="return confirm('Delete this dashboard?');">
                                             <input type="hidden" name="action" value="delete_dashboard">
                                             <input type="hidden" name="id" value="<?php echo h($dashboard['id']); ?>">
                                             <button type="submit" class="btn-danger">Delete</button>

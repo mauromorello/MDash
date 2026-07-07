@@ -21,7 +21,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'login_time' => $user['login_time'] ?? null,
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
@@ -48,17 +48,17 @@ if ($templateId <= 0) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modifica template</title>
+    <title>Edit template</title>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
     <div class="user-ribbon">
         <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>
                 <a href="admin.php">Admin Console</a>
@@ -70,20 +70,20 @@ if ($templateId <= 0) {
     <div class="page">
         <div class="topbar">
             <div>
-                <h1>Modifica template</h1>
-                <div class="meta">Aggiorna titolo e prompt del template selezionato.</div>
+                <h1>Edit template</h1>
+                <div class="meta">Update title and prompt for the selected template.</div>
             </div>
-            <a href="templates.php">Torna ai template</a>
+            <a href="templates.php">Back to templates</a>
         </div>
 
-        <div id="messageBox" class="message" style="display:none;"></div>
+        <div id="messageBox" class="message hidden"></div>
 
         <div class="card">
             <form id="editTemplateForm">
                 <input type="hidden" id="template_id" value="<?php echo h($templateId); ?>">
 
                 <div class="field">
-                    <label for="title">Titolo</label>
+                    <label for="title">Title</label>
                     <input type="text" id="title" name="title" maxlength="255" required>
                 </div>
 
@@ -94,24 +94,24 @@ if ($templateId <= 0) {
 
                 <div class="form-grid">
                     <div class="field">
-                        <label for="is_public">Visibilità</label>
+                        <label for="is_public">Visibility</label>
                         <select id="is_public" name="is_public">
-                            <option value="0">Privato</option>
-                            <option value="1">Pubblico</option>
+                            <option value="0">Private</option>
+                            <option value="1">Public</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label for="is_hidden">Stato</label>
+                        <label for="is_hidden">Status</label>
                         <select id="is_hidden" name="is_hidden">
-                            <option value="0">Visibile</option>
-                            <option value="1">Nascosto</option>
+                            <option value="0">Visible</option>
+                            <option value="1">Hidden</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="inline-actions">
-                    <button type="submit">Salva modifiche</button>
-                    <a href="templates.php" class="btn-secondary">Annulla</a>
+                    <button type="submit">Save changes</button>
+                    <a href="templates.php" class="btn-secondary">Cancel</a>
                 </div>
             </form>
         </div>
@@ -122,7 +122,7 @@ if ($templateId <= 0) {
             const box = document.getElementById('messageBox');
             box.textContent = text;
             box.className = 'message' + (isError ? ' error' : '');
-            box.style.display = 'block';
+            box.classList.remove('hidden');
         }
 
         function api(action, payload) {
@@ -140,7 +140,7 @@ if ($templateId <= 0) {
             const id = document.getElementById('template_id').value;
             api('get_template', { id: id }).then(function (res) {
                 if (!res.success || !res.data || !res.data.template) {
-                    showMessage(res.message || 'Template non trovato.', true);
+                    showMessage(res.message || 'Template not found.', true);
                     return;
                 }
                 document.getElementById('title').value = res.data.template.title || '';
@@ -148,7 +148,7 @@ if ($templateId <= 0) {
                 document.getElementById('is_public').value = Number(res.data.template.is_public || 0) === 1 ? '1' : '0';
                 document.getElementById('is_hidden').value = Number(res.data.template.is_hidden || 0) === 1 ? '1' : '0';
             }).catch(function () {
-                showMessage('Errore di rete durante caricamento template.', true);
+                showMessage('Network error while loading template.', true);
             });
         }
 
@@ -161,18 +161,18 @@ if ($templateId <= 0) {
             const isHidden = Number(document.getElementById('is_hidden').value) === 1 ? 1 : 0;
 
             if (!title) {
-                showMessage('Il titolo del template è obbligatorio.', true);
+                showMessage('Template title is required.', true);
                 return;
             }
 
             api('update_template', { id: id, title: title, prompt: prompt, is_public: isPublic, is_hidden: isHidden }).then(function (res) {
                 if (!res.success) {
-                    showMessage(res.message || 'Errore aggiornamento template.', true);
+                    showMessage(res.message || 'Template update error.', true);
                     return;
                 }
-                showMessage('Template aggiornato correttamente.', false);
+                showMessage('Template updated successfully.', false);
             }).catch(function () {
-                showMessage('Errore di rete durante aggiornamento template.', true);
+                showMessage('Network error while updating template.', true);
             });
         });
 

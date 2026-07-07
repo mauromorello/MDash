@@ -21,7 +21,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'login_time' => $user['login_time'] ?? null,
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
@@ -42,7 +42,7 @@ if (!$user) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -52,7 +52,7 @@ if (!$user) {
 <body>
     <div class="user-ribbon">
         <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">Utente: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
+        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
         <div class="actions">
             <?php if (!empty($user['is_admin'])): ?>
                 <a href="admin.php">Admin Console</a>
@@ -65,61 +65,61 @@ if (!$user) {
         <div class="topbar">
             <div>
                 <h1>Templates</h1>
-                <div class="meta"><span class="pill">I miei template</span> Crea, modifica ed elimina i template prompt da usare nel builder dashboard.</div>
+                <div class="meta"><span class="pill">My templates</span> Create, edit, and remove prompt templates for the dashboard builder.</div>
             </div>
-            <a href="dashboard_builder.php">Vai al dashboard builder</a>
+            <a href="dashboard_builder.php">Go to dashboard builder</a>
         </div>
 
-        <div id="messageBox" class="message" style="display:none;"></div>
+        <div id="messageBox" class="message hidden"></div>
 
         <div class="card">
-            <h2 style="margin-top:0;">Nuovo template</h2>
+            <h2 class="compact-title">New template</h2>
             <form id="createTemplateForm">
                 <div class="field">
-                    <label for="title">Titolo</label>
+                    <label for="title">Title</label>
                     <input type="text" id="title" name="title" maxlength="255" required>
                 </div>
                 <div class="field">
                     <label for="prompt">Prompt</label>
-                    <textarea id="prompt" name="prompt" placeholder="Inserisci il prompt template"></textarea>
+                    <textarea id="prompt" name="prompt" placeholder="Enter template prompt"></textarea>
                 </div>
                 <div class="form-grid">
                     <div class="field">
-                        <label for="is_public">Visibilità</label>
+                        <label for="is_public">Visibility</label>
                         <select id="is_public" name="is_public">
-                            <option value="0">Privato</option>
-                            <option value="1">Pubblico</option>
+                            <option value="0">Private</option>
+                            <option value="1">Public</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label for="is_hidden">Stato</label>
+                        <label for="is_hidden">Status</label>
                         <select id="is_hidden" name="is_hidden">
-                            <option value="0">Visibile</option>
-                            <option value="1">Nascosto</option>
+                            <option value="0">Visible</option>
+                            <option value="1">Hidden</option>
                         </select>
                     </div>
                 </div>
-                <button type="submit">Salva template</button>
+                <button type="submit">Save template</button>
             </form>
         </div>
 
         <div class="card">
-            <h2 style="margin-top:0;">Elenco template</h2>
+            <h2 class="compact-title">Template list</h2>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Titolo</th>
+                            <th>Title</th>
                             <th>Prompt</th>
-                            <th>Data</th>
-                            <th>Creatore</th>
-                            <th>Stato</th>
-                            <th>Azioni</th>
+                            <th>Date</th>
+                            <th>Creator</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="templatesRows">
-                        <tr><td colspan="7" class="empty">Caricamento template...</td></tr>
+                        <tr><td colspan="7" class="empty">Loading templates...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -131,7 +131,7 @@ if (!$user) {
             const box = document.getElementById('messageBox');
             box.textContent = text;
             box.className = 'message' + (isError ? ' error' : '');
-            box.style.display = 'block';
+            box.classList.remove('hidden');
         }
 
         function api(action, payload) {
@@ -148,7 +148,7 @@ if (!$user) {
         function renderRows(rows) {
             const body = document.getElementById('templatesRows');
             if (!rows || rows.length === 0) {
-                body.innerHTML = '<tr><td colspan="7" class="empty">Nessun template disponibile.</td></tr>';
+                body.innerHTML = '<tr><td colspan="7" class="empty">No templates available.</td></tr>';
                 return;
             }
 
@@ -159,24 +159,24 @@ if (!$user) {
                 const isOwner = Number(row.is_owner || 0) === 1;
                 const isPublic = Number(row.is_public || 0) === 1;
                 const isHidden = Number(row.is_hidden || 0) === 1;
-                const creator = row.owner_username || ('Utente #' + String(row.id_owner || ''));
+                const creator = row.owner_username || ('User #' + String(row.id_owner || ''));
 
-                let statusText = isPublic ? 'Pubblico' : 'Privato';
+                let statusText = isPublic ? 'Public' : 'Private';
                 if (isHidden) {
-                    statusText += ' | Nascosto';
+                    statusText += ' | Hidden';
                 }
 
                 const actionsHtml = isOwner
                     ? '<div class="inline-actions">' +
-                        '<a href="edit_template.php?id=' + encodeURIComponent(row.id) + '">Modifica</a>' +
-                        '<button type="button" class="btn-danger delete-template" data-id="' + String(row.id || '') + '">Elimina</button>' +
+                        '<a href="edit_template.php?id=' + encodeURIComponent(row.id) + '">Edit</a>' +
+                        '<button type="button" class="btn-danger delete-template" data-id="' + String(row.id || '') + '">Delete</button>' +
                       '</div>'
-                    : '<span class="meta">Solo lettura</span>';
+                    : '<span class="meta">Read only</span>';
 
                 tr.innerHTML = '' +
                     '<td>' + String(row.id || '') + '</td>' +
                     '<td>' + String(row.title || '') + '</td>' +
-                    '<td><div style="white-space:pre-wrap;">' + String(promptPreview || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></td>' +
+                    '<td><div class="prompt-preview">' + String(promptPreview || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></td>' +
                     '<td>' + String(row.date || '') + '</td>' +
                     '<td>' + (isPublic ? String(creator).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '-') + '</td>' +
                     '<td>' + statusText + '</td>' +
@@ -191,18 +191,18 @@ if (!$user) {
                     if (!id) {
                         return;
                     }
-                    if (!confirm('Eliminare questo template?')) {
+                    if (!confirm('Delete this template?')) {
                         return;
                     }
                     api('delete_template', { id: id }).then(function (res) {
                         if (!res.success) {
-                            showMessage(res.message || 'Errore eliminazione template.', true);
+                            showMessage(res.message || 'Template delete error.', true);
                             return;
                         }
-                        showMessage('Template eliminato correttamente.', false);
+                        showMessage('Template deleted successfully.', false);
                         loadTemplates();
                     }).catch(function () {
-                        showMessage('Errore di rete durante eliminazione template.', true);
+                        showMessage('Network error while deleting template.', true);
                     });
                 });
             });
@@ -211,13 +211,13 @@ if (!$user) {
         function loadTemplates() {
             api('list_templates', {}).then(function (res) {
                 if (!res.success) {
-                    showMessage(res.message || 'Errore caricamento template.', true);
+                    showMessage(res.message || 'Template loading error.', true);
                     renderRows([]);
                     return;
                 }
                 renderRows((res.data && res.data.templates) ? res.data.templates : []);
             }).catch(function () {
-                showMessage('Errore di rete durante caricamento template.', true);
+                showMessage('Network error while loading templates.', true);
                 renderRows([]);
             });
         }
@@ -230,20 +230,20 @@ if (!$user) {
             const isHidden = Number(document.getElementById('is_hidden').value) === 1 ? 1 : 0;
 
             if (!title) {
-                showMessage('Il titolo del template è obbligatorio.', true);
+                showMessage('Template title is required.', true);
                 return;
             }
 
             api('create_template', { title: title, prompt: prompt, is_public: isPublic, is_hidden: isHidden }).then(function (res) {
                 if (!res.success) {
-                    showMessage(res.message || 'Errore creazione template.', true);
+                    showMessage(res.message || 'Template creation error.', true);
                     return;
                 }
-                showMessage('Template creato correttamente.', false);
+                showMessage('Template created successfully.', false);
                 document.getElementById('createTemplateForm').reset();
                 loadTemplates();
             }).catch(function () {
-                showMessage('Errore di rete durante creazione template.', true);
+                showMessage('Network error while creating template.', true);
             });
         });
 

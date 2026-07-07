@@ -21,7 +21,7 @@ function getUserFromSessionOrCookie() {
         if (is_array($user) && !empty($user['id'])) {
             return [
                 'id' => (int)$user['id'],
-                'username' => $user['username'] ?? 'utente',
+                'username' => $user['username'] ?? 'user',
                 'login_time' => $user['login_time'] ?? null,
                 'is_admin' => (int)($user['is_admin'] ?? 0),
             ];
@@ -226,91 +226,6 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Results</title>
     <link rel="stylesheet" href="assets/app.css">
-    <style>
-        .results-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 16px;
-        }
-        .result-card {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .thumbnail-box {
-            min-height: 180px;
-            border: 1px dashed var(--border);
-            border-radius: 12px;
-            background: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--muted);
-            overflow: hidden;
-        }
-        .thumbnail-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .result-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            font-size: 0.95rem;
-        }
-        .result-meta strong {
-            font-size: 1rem;
-        }
-        .result-owner {
-            font-size: 0.88rem;
-            font-weight: 700;
-            color: #0f172a;
-            background: #e2e8f0;
-            border-radius: 999px;
-            padding: 4px 10px;
-            display: inline-block;
-            width: fit-content;
-        }
-        .results-controls {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 16px;
-        }
-        .result-actions {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
-        }
-        .result-actions form,
-        .result-actions a,
-        .result-actions button {
-            margin: 0;
-        }
-        .result-actions button,
-        .result-actions a {
-            width: 100%;
-            text-align: center;
-        }
-        .icon-btn {
-            font-size: 1.05rem;
-            line-height: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 36px;
-        }
-        .btn-ghost {
-            background: #475569;
-        }
-        .btn-danger {
-            background: #b91c1c;
-        }
-    </style>
 </head>
 <body>
     <div class="user-ribbon">
@@ -376,7 +291,7 @@ try {
                         </div>
 
                         <div class="result-actions">
-                            <a href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener">Open dashboard</a>
+                            <a class="open-link" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener">Open dashboard</a>
 
                             <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>
                                 <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste screenshot" aria-label="Paste screenshot">📋</button>

@@ -7,27 +7,17 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
 }
 ?>
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1f2937; }
-        .login-wrap { width: 100%; max-width: 320px; margin: 50px auto; padding: 0 12px; }
-        .brand-home { display: inline-block; margin: 16px; color: #111827; text-decoration: none; font-weight: 700; }
-        .brand-home:hover { text-decoration: underline; }
-        form div { margin-bottom: 10px; }
-        label { display: block; margin-bottom: 4px; }
-        input { width: 100%; padding: 8px; }
-        button { padding: 8px 12px; }
-        #message { margin-top: 12px; }
-    </style>
+    <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
     <a href="main.php" class="brand-home">Mdash</a>
     <div class="login-wrap">
-        <h2>Accedi</h2>
+        <h2>Sign in</h2>
         <form id="loginForm">
             <div>
                 <label for="user">User:</label>
@@ -41,7 +31,7 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
             <button type="submit">Login</button>
         </form>
 
-        <div id="message"></div>
+        <div id="message" class="login-message"></div>
     </div>
 
     <script>
@@ -73,11 +63,11 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
                     }
                     window.location.href = 'main.php';
                 } else {
-                    message.innerHTML = '<strong>Errore:</strong> ' + result.message;
+                    message.innerHTML = '<strong>Error:</strong> ' + result.message;
                 }
             })
             .catch(() => {
-                document.getElementById('message').innerHTML = 'Errore durante la richiesta.';
+                document.getElementById('message').innerHTML = 'Request failed.';
             });
         });
     </script>
