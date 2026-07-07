@@ -104,8 +104,21 @@ function getNextResultId(PDO $pdo): int {
 }
 
 function ensureDirectory(string $directory): void {
-    if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
-        throw new RuntimeException('Unable to create output directory.');
+    if (is_dir($directory)) {
+        return;
+    }
+
+    $parent = dirname($directory);
+    if ($parent !== '' && !is_dir($parent) && !mkdir($parent, 0777, true) && !is_dir($parent)) {
+        $lastError = error_get_last();
+        $detail = $lastError['message'] ?? 'unknown error';
+        throw new RuntimeException('Unable to create parent directory at ' . $parent . ': ' . $detail);
+    }
+
+    if (!mkdir($directory, 0777, false) && !is_dir($directory)) {
+        $lastError = error_get_last();
+        $detail = $lastError['message'] ?? 'unknown error';
+        throw new RuntimeException('Unable to create output directory at ' . $directory . ': ' . $detail);
     }
 }
 
@@ -326,6 +339,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $generationSteps[] = 'Generated HTML length: ' . strlen($generatedHtml) . ' bytes.';
 
             $resultsDir = __DIR__ . DIRECTORY_SEPARATOR . 'results';
+            ensureDirectory($resultsDir);
+            $generationSteps[] = 'Verified results root directory.';
 
             $resultId = getNextResultId($pdo);
             $resultDir = $resultsDir . DIRECTORY_SEPARATOR . $resultId;
@@ -382,9 +397,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
 
 if ($dashboard) {
     $promptTitle = trim((string)($dashboard['title'] ?? 'Dashboard without title'));
+    $dataSourceId = (int)($dashboard['id_datasource'] ?? 0);
+    $dataSourceFilename = (string)($upload['filename'] ?? 'N/A');
+    $dataSourceRelativePath = (string)($upload['path'] ?? '');
+    $dataSourceAbsoluteUrl = $dataSourceRelativePath !== '' ? buildAbsolutePath($dataSourceRelativePath) : '';
+    $dataSourceDescription = (string)($upload['description'] ?? '');
+    $dataSourceTags = (string)($upload['tags'] ?? '');
 
     $sections = [];
     $sections[] = normalizeSection('Dashboard title', $promptTitle);
+    $sections[] = normalizeSection(
+        'Data source',
+        "Data source ID: " . $dataSourceId . "\n" .
+        "File name: " . $dataSourceFilename . "\n" .
+        "Relative file path: " . ($dataSourceRelativePath !== '' ? $dataSourceRelativePath : 'N/A') . "\n" .
+        "Absolute file URL: " . ($dataSourceAbsoluteUrl !== '' ? $dataSourceAbsoluteUrl : 'N/A') . "\n" .
+        "Description: " . ($dataSourceDescription !== '' ? $dataSourceDescription : 'N/A') . "\n" .
+        "Tags: " . ($dataSourceTags !== '' ? $dataSourceTags : 'N/A')
+    );
     $sections[] = normalizeSection(
         'Dashboard prompt',
         "Data filter prompt:\n" . ($dashboard['data_filter_prompt'] ?? '') . "\n\n" .
