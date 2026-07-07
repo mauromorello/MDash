@@ -296,6 +296,14 @@ try {
             width: 100%;
             text-align: center;
         }
+        .icon-btn {
+            font-size: 1.05rem;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+        }
         .btn-ghost {
             background: #475569;
         }
@@ -371,7 +379,7 @@ try {
                             <a href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener">Open dashboard</a>
 
                             <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>
-                                <button type="button" class="btn-ghost paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>">Paste screenshot</button>
+                                <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste screenshot" aria-label="Paste screenshot">📋</button>
 
                                 <form method="post" class="thumbnail-form" id="thumbnailForm<?php echo h($result['id']); ?>">
                                     <input type="hidden" name="action" value="save_thumbnail">
@@ -383,13 +391,13 @@ try {
                                     <input type="hidden" name="action" value="set_hidden">
                                     <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
                                     <input type="hidden" name="hidden_value" value="<?php echo ((int)$result['is_hidden'] === 1) ? '0' : '1'; ?>">
-                                    <button type="submit" class="btn-ghost"><?php echo ((int)$result['is_hidden'] === 1) ? 'Reveal' : 'Hide'; ?></button>
+                                    <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Reveal dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Reveal dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? '👁️' : '🙈'; ?></button>
                                 </form>
 
                                 <form method="post" onsubmit="return confirm('Delete this dashboard permanently? This action removes DB record and files.');">
                                     <input type="hidden" name="action" value="delete_result">
                                     <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
-                                    <button type="submit" class="btn-danger">Delete permanently</button>
+                                    <button type="submit" class="btn-danger icon-btn" title="Delete permanently" aria-label="Delete permanently">🗑️</button>
                                 </form>
                             <?php endif; ?>
                         </div>
@@ -456,7 +464,7 @@ try {
 
                 const originalText = button.textContent;
                 button.disabled = true;
-                button.textContent = 'Reading clipboard...';
+                button.textContent = '...';
 
                 try {
                     const dataUrl = await readImageFromClipboard();
