@@ -145,6 +145,40 @@ function getNextResultId(PDO $pdo): int {
     return (int)($stmt->fetch(PDO::FETCH_ASSOC)['next_id'] ?? 1);
 }
 
+function loadLoadingPhrases(PDO $pdo): array {
+    try {
+        $tableExists = $pdo->query("SHOW TABLES LIKE 'options'")->fetchColumn();
+        if (!$tableExists) {
+            return [];
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT option_value
+             FROM options
+             WHERE option_key LIKE ?
+             ORDER BY option_key ASC'
+        );
+        $stmt->execute(['dashboard.loading_phrases.en.%']);
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (empty($rows)) {
+            return [];
+        }
+
+        $phrases = [];
+        foreach ($rows as $item) {
+            $phrase = trim((string)$item);
+            if ($phrase === '') {
+                continue;
+            }
+            $phrases[] = $phrase;
+        }
+
+        return $phrases;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 function ensureDirectory(string $directory): void {
     if (is_dir($directory)) {
         return;
@@ -359,6 +393,7 @@ $makeup = null;
 $resultFilePath = '';
 $generatedHtml = '';
 $generationSteps = [];
+$loadingPhrases = [];
 $message = '';
 $dashboardId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $selectedAiId = (int)($_POST['id_ai_db'] ?? 0);
@@ -375,6 +410,8 @@ try {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]
     );
+
+    $loadingPhrases = loadLoadingPhrases($pdo);
 } catch (PDOException $e) {
     $error = 'Database error: ' . $e->getMessage();
 }
@@ -658,6 +695,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Prompt</title>
     <link rel="stylesheet" href="assets/app.css">
+    <style>
+        .generation-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(2, 6, 23, 0.92);
+            backdrop-filter: blur(3px);
+        }
+
+        .generation-overlay.active {
+            display: flex;
+        }
+
+        .generation-overlay canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .generation-overlay-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            color: #e2e8f0;
+            max-width: 760px;
+            padding: 24px;
+        }
+
+        .generation-overlay-title {
+            margin: 0;
+            font-size: clamp(1.6rem, 3vw, 2.4rem);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #93c5fd;
+        }
+
+        .generation-overlay-subtitle {
+            margin: 14px 0 0;
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            color: #dbeafe;
+            min-height: 1.8em;
+        }
+    </style>
 </head>
 <body>
     <div class="user-ribbon">
@@ -724,7 +808,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         </div>
 
         <div class="card">
-            <form method="post">
+            <form method="post" id="generateDashboardForm">
                 <input type="hidden" name="action" value="generate_dashboard">
                 <input type="hidden" name="id" value="<?php echo h($dashboardId); ?>">
                 <input type="hidden" name="master_prompt" value="<?php echo h($masterPrompt); ?>">
@@ -747,7 +831,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
                     <div class="meta">Only active and accessible AI profiles are listed.</div>
                 </div>
 
-                <button type="submit"<?php echo empty($aiProfiles) ? ' disabled' : ''; ?>>Generate dashboard</button>
+                <button type="submit" id="generateDashboardBtn"<?php echo empty($aiProfiles) ? ' disabled' : ''; ?>>Generate dashboard</button>
             </form>
         </div>
 
@@ -773,7 +857,202 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         <?php endif; ?>
     </div>
 
+    <div id="generationOverlay" class="generation-overlay" aria-hidden="true">
+        <canvas id="generationCanvas"></canvas>
+        <div class="generation-overlay-content">
+            <h2 class="generation-overlay-title">Generating Futuristic Dashboard</h2>
+            <p id="generationPhrase" class="generation-overlay-subtitle">Asking AI nicely...</p>
+        </div>
+    </div>
+
     <script>
+        const loadingPhrases = <?php echo json_encode($loadingPhrases, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'; ?>;
+
+        const overlay = document.getElementById('generationOverlay');
+        const canvas = document.getElementById('generationCanvas');
+        const phraseEl = document.getElementById('generationPhrase');
+        const generateForm = document.getElementById('generateDashboardForm');
+        const generateBtn = document.getElementById('generateDashboardBtn');
+
+        let phraseTimer = null;
+        let animationHandle = null;
+        let submitting = false;
+
+        function randomPhrase() {
+            return loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)] || 'Asking AI kindly...';
+        }
+
+        function startPhraseRotation() {
+            if (!phraseEl) {
+                return;
+            }
+
+            phraseEl.textContent = randomPhrase();
+            phraseTimer = window.setInterval(function () {
+                phraseEl.textContent = randomPhrase();
+            }, 3000);
+        }
+
+        function stopPhraseRotation() {
+            if (phraseTimer) {
+                window.clearInterval(phraseTimer);
+                phraseTimer = null;
+            }
+        }
+
+        function startCanvasAnimation() {
+            if (!canvas) {
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                return;
+            }
+
+            const points = [];
+            const pointCount = 90;
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+
+            function seedPoints() {
+                points.length = 0;
+                for (let i = 0; i < pointCount; i += 1) {
+                    points.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        vx: (Math.random() - 0.5) * 0.75,
+                        vy: (Math.random() - 0.5) * 0.75,
+                        r: Math.random() * 2 + 0.8
+                    });
+                }
+            }
+
+            function drawScene(ts) {
+                ctx.fillStyle = 'rgba(2, 6, 23, 0.35)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const cx = canvas.width * 0.5;
+                const cy = canvas.height * 0.5;
+                const ringRadius = Math.min(canvas.width, canvas.height) * 0.2;
+
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(ts * 0.00025);
+                for (let i = 0; i < 4; i += 1) {
+                    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, ringRadius + i * 24, 0, Math.PI * 1.6);
+                    ctx.stroke();
+                    ctx.rotate(Math.PI / 2);
+                }
+                ctx.restore();
+
+                for (let i = 0; i < points.length; i += 1) {
+                    const p = points[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+
+                    if (p.x < 0 || p.x > canvas.width) {
+                        p.vx *= -1;
+                    }
+                    if (p.y < 0 || p.y > canvas.height) {
+                        p.vy *= -1;
+                    }
+
+                    ctx.fillStyle = 'rgba(125, 211, 252, 0.95)';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    for (let j = i + 1; j < points.length; j += 1) {
+                        const q = points[j];
+                        const dx = p.x - q.x;
+                        const dy = p.y - q.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 120) {
+                            ctx.strokeStyle = 'rgba(56, 189, 248,' + (0.22 - dist / 800) + ')';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(p.x, p.y);
+                            ctx.lineTo(q.x, q.y);
+                            ctx.stroke();
+                        }
+                    }
+                }
+
+                animationHandle = window.requestAnimationFrame(drawScene);
+            }
+
+            resizeCanvas();
+            seedPoints();
+            window.addEventListener('resize', function () {
+                resizeCanvas();
+                seedPoints();
+            }, { once: true });
+            animationHandle = window.requestAnimationFrame(drawScene);
+        }
+
+        function stopCanvasAnimation() {
+            if (animationHandle) {
+                window.cancelAnimationFrame(animationHandle);
+                animationHandle = null;
+            }
+        }
+
+        function showGenerationOverlay() {
+            if (!overlay) {
+                return;
+            }
+
+            overlay.classList.add('active');
+            overlay.setAttribute('aria-hidden', 'false');
+            startPhraseRotation();
+            startCanvasAnimation();
+        }
+
+        function hideGenerationOverlay() {
+            if (!overlay) {
+                return;
+            }
+
+            overlay.classList.remove('active');
+            overlay.setAttribute('aria-hidden', 'true');
+            stopPhraseRotation();
+            stopCanvasAnimation();
+        }
+
+        if (generateForm) {
+            generateForm.addEventListener('submit', function (event) {
+                if (submitting) {
+                    event.preventDefault();
+                    return;
+                }
+
+                submitting = true;
+                event.preventDefault();
+                if (generateBtn) {
+                    generateBtn.disabled = true;
+                }
+                showGenerationOverlay();
+
+                window.requestAnimationFrame(function () {
+                    window.requestAnimationFrame(function () {
+                        generateForm.submit();
+                    });
+                });
+            });
+        }
+
+        window.addEventListener('pageshow', function () {
+            submitting = false;
+            hideGenerationOverlay();
+        });
+
         const copyPromptBtn = document.getElementById('copyPromptBtn');
         if (copyPromptBtn) {
             copyPromptBtn.addEventListener('click', function () {
