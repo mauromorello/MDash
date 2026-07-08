@@ -101,15 +101,11 @@ function h($value) {
                 </div>
 
                 <div class="main-section-card">
-                    <h2>Dashboard Builder</h2>
+                    <h2>Dashboards</h2>
                     <div class="main-action-item">
-                        <a href="dashboard_builder.php" class="btn btn-accent">Create Dashboard</a>
+                        <a href="dashboard_builder.php" class="btn btn-accent">Generate Dashboard</a>
                         <p class="main-action-desc">Build a dashboard by combining data, rules, and templates.</p>
                     </div>
-                </div>
-
-                <div class="main-section-card">
-                    <h2>Dashboards</h2>
                     <div class="main-action-item">
                         <a href="dashboards.php" class="btn btn-warning">Dashboard Pool</a>
                         <p class="main-action-desc">Review, edit, and generate prompts from saved dashboards.</p>
@@ -117,10 +113,6 @@ function h($value) {
                     <div class="main-action-item">
                         <a href="results.php" class="btn btn-secondary">Generated Results</a>
                         <p class="main-action-desc">Open the list of generated dashboards and their saved outputs.</p>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="final.php" class="btn btn-primary">Ready Dashboards</a>
-                        <p class="main-action-desc">Open your generated dashboard outputs ready to use.</p>
                     </div>
                 </div>
             </div>
