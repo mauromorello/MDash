@@ -433,6 +433,9 @@ if ($dashboard) {
     $dataSourceAbsoluteUrl = $dataSourceRelativePath !== '' ? buildAbsolutePath($dataSourceRelativePath) : '';
     $dataSourceDescription = (string)($upload['description'] ?? '');
     $dataSourceTags = (string)($upload['tags'] ?? '');
+    $dataSourceLongDescription = trim((string)($upload['long_description'] ?? ''));
+    $dataSourcePrompt1 = trim((string)($upload['prompt_1'] ?? ''));
+    $dataSourcePrompt2 = trim((string)($upload['prompt_2'] ?? ''));
 
     $sections = [];
     $seenTitles = [];
@@ -455,8 +458,17 @@ if ($dashboard) {
     if ($dataSourceDescription !== '') {
         $dataSourceLines[] = 'Description: ' . $dataSourceDescription;
     }
+    if ($dataSourceLongDescription !== '') {
+        $dataSourceLines[] = "Long description:\n" . $dataSourceLongDescription;
+    }
     if ($dataSourceTags !== '') {
         $dataSourceLines[] = 'Tags: ' . $dataSourceTags;
+    }
+    if ($dataSourcePrompt1 !== '') {
+        $dataSourceLines[] = "Interpretation prompt 1:\n" . $dataSourcePrompt1;
+    }
+    if ($dataSourcePrompt2 !== '') {
+        $dataSourceLines[] = "Interpretation prompt 2:\n" . $dataSourcePrompt2;
     }
     addSectionIfNotEmpty($sections, $seenTitles, 'Data source', implode("\n", $dataSourceLines));
 
