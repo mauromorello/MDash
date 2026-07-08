@@ -61,6 +61,48 @@ function addSectionIfNotEmpty(array &$sections, array &$seenTitles, string $titl
     $seenTitles[$title] = true;
 }
 
+function findAiProfileById(array $profiles, int $id): ?array {
+    foreach ($profiles as $profile) {
+        if ((int)($profile['id'] ?? 0) === $id) {
+            return $profile;
+        }
+    }
+
+    return null;
+}
+
+function getAiErrorHint(string $errorMessage): string {
+    $needle = strtolower($errorMessage);
+
+    if (str_contains($needle, 'endpoint non riconosciuto')) {
+        return 'Hint: endpoint non riconosciuto. Usa l\'endpoint Gemini con :generateContent e verifica il model.';
+    }
+
+    if (
+        str_contains($needle, 'api non valida')
+        || str_contains($needle, 'api key not valid')
+        || str_contains($needle, 'unauthorized')
+        || str_contains($needle, 'permission denied')
+    ) {
+        return 'Hint: API key non valida/non autorizzata. Controlla chiave, permessi e progetto associato.';
+    }
+
+    if (
+        str_contains($needle, 'token superati')
+        || str_contains($needle, 'quota')
+        || str_contains($needle, 'rate limit')
+        || str_contains($needle, 'resource exhausted')
+    ) {
+        return 'Hint: token/quota superati. Riduci prompt o usa un modello con limiti maggiori.';
+    }
+
+    if (str_contains($needle, 'modello non disponibile') || str_contains($needle, 'model')) {
+        return 'Hint: modello non disponibile. Verifica nome modello e disponibilita sul tuo account.';
+    }
+
+    return '';
+}
+
 function getEnvironmentValue(string $name): string {
     $value = getenv($name);
     if ($value !== false && $value !== '') {
@@ -203,6 +245,14 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
         $endpoint = str_replace('{model}', rawurlencode($model !== '' ? $model : 'gemini-flash-latest'), $endpoint);
     }
 
+    if (!filter_var($endpoint, FILTER_VALIDATE_URL)) {
+        throw new RuntimeException('Endpoint non riconosciuto: URL non valida.');
+    }
+
+    if ($provider === 'gemini' && !str_contains(strtolower($endpoint), ':generatecontent')) {
+        throw new RuntimeException('Endpoint non riconosciuto: per Gemini serve un endpoint :generateContent.');
+    }
+
     $payload = [
         'contents' => [
             [
@@ -239,8 +289,40 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
 
     $decoded = json_decode($response, true);
     if ($httpCode < 200 || $httpCode >= 300) {
-        $detail = $decoded['error']['message'] ?? $response;
-        throw new RuntimeException('Gemini API error: ' . $detail);
+        $apiMessage = trim((string)($decoded['error']['message'] ?? ''));
+        $apiStatus = strtoupper(trim((string)($decoded['error']['status'] ?? '')));
+        $normalized = strtolower($apiMessage . ' ' . $apiStatus);
+
+        if (
+            $httpCode === 401
+            || $httpCode === 403
+            || str_contains($normalized, 'api key not valid')
+            || str_contains($normalized, 'permission denied')
+            || str_contains($normalized, 'unauth')
+        ) {
+            throw new RuntimeException('API non valida o non autorizzata.');
+        }
+
+        if (
+            $httpCode === 404
+            || str_contains($normalized, 'method not found')
+            || str_contains($normalized, 'not found')
+        ) {
+            throw new RuntimeException('Endpoint non riconosciuto o modello non disponibile.');
+        }
+
+        if (
+            $httpCode === 429
+            || str_contains($normalized, 'quota')
+            || str_contains($normalized, 'rate limit')
+            || str_contains($normalized, 'resource exhausted')
+            || (str_contains($normalized, 'token') && str_contains($normalized, 'exceed'))
+        ) {
+            throw new RuntimeException('Token superati o quota/rate limit raggiunti.');
+        }
+
+        $detail = $apiMessage !== '' ? $apiMessage : $response;
+        throw new RuntimeException('Gemini API error (HTTP ' . $httpCode . '): ' . $detail);
     }
 
     $text = '';
@@ -282,6 +364,7 @@ $generatedHtml = '';
 $generationSteps = [];
 $message = '';
 $dashboardId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+$selectedAiId = (int)($_POST['id_ai_db'] ?? 0);
 $promptTitle = '';
 $masterPrompt = '';
 
@@ -335,15 +418,19 @@ if ($pdo && $dashboardId > 0) {
             $makeup = $makeupStmt->fetch();
         }
 
-        $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], true);
-        $selectedAiId = (int)($dashboard['id_ai_db'] ?? 0);
+        $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], false);
+
+        if ($selectedAiId <= 0) {
+            $selectedAiId = (int)($dashboard['id_ai_db'] ?? 0);
+        }
+
         if ($selectedAiId > 0) {
-            $aiProfile = mdashFetchAccessibleAiProfile($pdo, $selectedAiId, (int)$user['id'], true);
-            if (!$aiProfile) {
-                throw new RuntimeException('Selected AI profile not found or not accessible.');
-            }
-        } elseif (!empty($aiProfiles)) {
+            $aiProfile = findAiProfileById($aiProfiles, $selectedAiId);
+        }
+
+        if (!$aiProfile && !empty($aiProfiles)) {
             $aiProfile = $aiProfiles[0];
+            $selectedAiId = (int)($aiProfile['id'] ?? 0);
         }
     } catch (Throwable $e) {
         $error = 'Error while loading data: ' . $e->getMessage();
@@ -359,17 +446,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
         $error = 'Dashboard not found.';
     } else {
         try {
+            $selectedAiId = (int)($_POST['id_ai_db'] ?? $selectedAiId);
+
             $generationSteps[] = 'Preparing dashboard generation request.';
             ensureResultsTable($pdo);
             $generationSteps[] = 'Results table is available.';
 
             $generationSteps[] = 'Sending prompt to Gemini API.';
+
+            if ($selectedAiId > 0) {
+                $aiProfile = findAiProfileById($aiProfiles, $selectedAiId);
+            }
+
             if (!$aiProfile && !empty($aiProfiles)) {
                 $aiProfile = $aiProfiles[0];
+                $selectedAiId = (int)($aiProfile['id'] ?? 0);
+            }
+
+            if (!$aiProfile) {
+                throw new RuntimeException('No active AI profile available. Create one in AI Library or reveal an existing one.');
             }
 
             if ($aiProfile) {
                 $generationSteps[] = 'Using AI profile: ' . (string)($aiProfile['title'] ?? ('#' . (string)($aiProfile['id'] ?? 0)));
+                $generationSteps[] = 'Provider/model: ' . (string)($aiProfile['provider'] ?? 'gemini') . ' / ' . (string)($aiProfile['model'] ?? 'gemini-flash-latest');
+                $generationSteps[] = 'Endpoint: ' . (string)($aiProfile['web_end_point'] ?? '[default Gemini endpoint]');
             } else {
                 $generationSteps[] = 'No AI profile selected. Falling back to environment credentials if available.';
             }
@@ -406,7 +507,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             );
             $generationSteps[] = 'Generated thumbnail SVG preview.';
             $idTemplate = (int)($dashboard['id_template'] ?? 0);
-            $idAiDb = (int)($dashboard['id_ai_db'] ?? (($aiProfile['id'] ?? 0) ?: 0));
+            $idAiDb = (int)(($aiProfile['id'] ?? 0) ?: 0);
             $idOwner = (int)$user['id'];
             $isPublic = (int)($dashboard['is_public'] ?? 0);
             $isHidden = (int)($dashboard['is_hidden'] ?? 0);
@@ -436,6 +537,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $generationSteps[] = 'Generation completed.';
         } catch (Throwable $e) {
             $generationSteps[] = 'Generation failed.';
+            $hint = getAiErrorHint($e->getMessage());
+            if ($hint !== '') {
+                $generationSteps[] = $hint;
+            }
             $error = 'Error while generating dashboard: ' . $e->getMessage();
         }
     }
@@ -627,7 +732,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
                 <input type="hidden" name="id" value="<?php echo h($dashboardId); ?>">
                 <input type="hidden" name="master_prompt" value="<?php echo h($masterPrompt); ?>">
                 <input type="hidden" name="prompt_title" value="<?php echo h($promptTitle); ?>">
-                <button type="submit">Generate dashboard</button>
+
+                <div class="field">
+                    <label for="id_ai_db">AI profile for this generation</label>
+                    <select id="id_ai_db" name="id_ai_db" required>
+                        <?php if (empty($aiProfiles)): ?>
+                            <option value="">No active AI profile available</option>
+                        <?php else: ?>
+                            <?php foreach ($aiProfiles as $profile): ?>
+                                <?php $profileId = (int)($profile['id'] ?? 0); ?>
+                                <option value="<?php echo h($profileId); ?>"<?php echo $profileId === (int)$selectedAiId ? ' selected' : ''; ?>>
+                                    #<?php echo h($profileId); ?> - <?php echo h((string)($profile['title'] ?? 'AI profile')); ?> [<?php echo h((string)($profile['provider'] ?? 'gemini')); ?> / <?php echo h((string)($profile['model'] ?? 'gemini-flash-latest')); ?>]
+                                </option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </select>
+                    <div class="meta">Only active and accessible AI profiles are listed.</div>
+                </div>
+
+                <button type="submit"<?php echo empty($aiProfiles) ? ' disabled' : ''; ?>>Generate dashboard</button>
             </form>
         </div>
 
