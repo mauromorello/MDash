@@ -111,6 +111,8 @@ $results = [];
 $error = '';
 $message = '';
 $showHidden = isset($_GET['show_hidden']) && (int)$_GET['show_hidden'] === 1;
+$requestedAction = (string)($_POST['action'] ?? $_GET['action'] ?? '');
+$expectsJson = ($requestedAction === 'get_html_code') || ($requestedAction === 'save_html_code' && ($_POST['ajax'] ?? '') === '1');
 
 try {
     $pdo = new PDO(
@@ -130,6 +132,7 @@ try {
             id_template INT NOT NULL,
             final_prompt TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             thumbnail_path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             id_owner INT NOT NULL,
             is_public INT NOT NULL DEFAULT '0',
             is_hidden INT NOT NULL DEFAULT '0',
@@ -143,14 +146,61 @@ try {
         if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
             $pdo->exec("ALTER TABLE results MODIFY COLUMN id INT NOT NULL");
         }
+
+        $htmlColumn = $pdo->query("SHOW COLUMNS FROM results LIKE 'HTML'")->fetch(PDO::FETCH_ASSOC);
+        if (!$htmlColumn) {
+            $pdo->exec("ALTER TABLE results ADD COLUMN `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL AFTER thumbnail_path");
+        }
+    }
+
+    if (($_GET['action'] ?? '') === 'get_html_code') {
+        $resultId = (int)($_GET['result_id'] ?? 0);
+        header('Content-Type: application/json');
+
+        if ($resultId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Invalid result id.']);
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT id, id_owner, path, `HTML`, is_public, is_hidden
+             FROM results
+             WHERE id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$resultId]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            echo json_encode(['success' => false, 'message' => 'Result not found.']);
+            exit;
+        }
+
+        $isOwner = (int)$row['id_owner'] === (int)$user['id'];
+        $isVisiblePublic = (int)$row['is_public'] === 1 && (int)$row['is_hidden'] === 0;
+        if (!$isOwner && !$isVisiblePublic) {
+            echo json_encode(['success' => false, 'message' => 'Not authorized.']);
+            exit;
+        }
+
+        $htmlCode = (string)($row['HTML'] ?? '');
+        if ($htmlCode === '' && !empty($row['path'])) {
+            $diskPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, (string)$row['path']);
+            if (is_file($diskPath)) {
+                $htmlCode = (string)file_get_contents($diskPath);
+            }
+        }
+
+        echo json_encode(['success' => true, 'html' => $htmlCode]);
+        exit;
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = (string)($_POST['action'] ?? '');
         $resultId = (int)($_POST['result_id'] ?? 0);
 
-        if ($resultId > 0 && in_array($action, ['set_hidden', 'delete_result', 'save_thumbnail'], true)) {
-            $ownerStmt = $pdo->prepare('SELECT id, id_owner FROM results WHERE id = ? LIMIT 1');
+        if ($resultId > 0 && in_array($action, ['set_hidden', 'delete_result', 'save_thumbnail', 'save_html_code'], true)) {
+            $ownerStmt = $pdo->prepare('SELECT id, id_owner, path FROM results WHERE id = ? LIMIT 1');
             $ownerStmt->execute([$resultId]);
             $ownerRow = $ownerStmt->fetch();
 
@@ -198,6 +248,37 @@ try {
                 $thumbStmt->execute([$relativeThumbPath, $resultId, (int)$user['id']]);
                 $message = 'Screenshot thumbnail saved successfully.';
             }
+
+            if ($action === 'save_html_code') {
+                $htmlCode = (string)($_POST['html_code'] ?? '');
+                if (trim($htmlCode) === '') {
+                    throw new RuntimeException('HTML code cannot be empty.');
+                }
+
+                $relativePath = (string)($ownerRow['path'] ?? '');
+                if ($relativePath === '') {
+                    throw new RuntimeException('Saved output path not found.');
+                }
+
+                $diskPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+                $dirPath = dirname($diskPath);
+                if (!is_dir($dirPath) && !mkdir($dirPath, 0777, true) && !is_dir($dirPath)) {
+                    throw new RuntimeException('Unable to create output directory for HTML file.');
+                }
+
+                file_put_contents($diskPath, $htmlCode);
+
+                $htmlStmt = $pdo->prepare('UPDATE results SET `HTML` = ? WHERE id = ? AND id_owner = ?');
+                $htmlStmt->execute([$htmlCode, $resultId, (int)$user['id']]);
+
+                if (($_POST['ajax'] ?? '') === '1') {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'message' => 'HTML code saved successfully.']);
+                    exit;
+                }
+
+                $message = 'HTML code saved successfully.';
+            }
         }
     }
 
@@ -216,6 +297,11 @@ try {
     $stmt->execute(['user_id' => (int)$user['id']]);
     $results = $stmt->fetchAll();
 } catch (Throwable $e) {
+    if ($expectsJson) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        exit;
+    }
     $error = $e->getMessage();
 }
 ?>
@@ -226,6 +312,8 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Results</title>
     <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material.min.css">
 </head>
 <body>
     <div class="user-ribbon">
@@ -296,6 +384,8 @@ try {
                             <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>
                                 <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste screenshot" aria-label="Paste screenshot">📋</button>
 
+                                <button type="button" class="btn-ghost icon-btn edit-code-btn" data-result-id="<?php echo h($result['id']); ?>" title="Edit code" aria-label="Edit code">&lt;/&gt;</button>
+
                                 <form method="post" class="thumbnail-form" id="thumbnailForm<?php echo h($result['id']); ?>">
                                     <input type="hidden" name="action" value="save_thumbnail">
                                     <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
@@ -322,6 +412,29 @@ try {
         <?php endif; ?>
     </div>
 
+    <div id="editCodeModal" class="code-modal hidden" role="dialog" aria-modal="true" aria-labelledby="codeModalTitle">
+        <div class="code-modal-backdrop" data-close-modal="1"></div>
+        <div class="code-modal-content">
+            <div class="code-modal-header">
+                <h2 id="codeModalTitle">Edit generated HTML</h2>
+                <button type="button" id="closeCodeModalBtn" class="secondary">Cancel</button>
+            </div>
+            <div class="code-modal-body">
+                <textarea id="codeEditorArea"></textarea>
+            </div>
+            <div class="code-modal-actions">
+                <button type="button" id="saveCodeBtn">Save code</button>
+                <button type="button" id="cancelCodeBtn" class="secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.15.1/beautify-html.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
     <script>
         const logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) {
@@ -396,6 +509,152 @@ try {
                     button.disabled = false;
                     button.textContent = originalText;
                 }
+            });
+        });
+
+        const editCodeModal = document.getElementById('editCodeModal');
+        const closeCodeModalBtn = document.getElementById('closeCodeModalBtn');
+        const cancelCodeBtn = document.getElementById('cancelCodeBtn');
+        const saveCodeBtn = document.getElementById('saveCodeBtn');
+        const codeEditorArea = document.getElementById('codeEditorArea');
+        const editCodeButtons = document.querySelectorAll('.edit-code-btn');
+        let currentEditResultId = 0;
+        let codeEditor = null;
+
+        function ensureCodeEditor() {
+            if (codeEditor || !codeEditorArea || typeof CodeMirror === 'undefined') {
+                return;
+            }
+
+            codeEditor = CodeMirror.fromTextArea(codeEditorArea, {
+                mode: 'text/html',
+                theme: 'material',
+                lineNumbers: true,
+                lineWrapping: true,
+                indentUnit: 2,
+                tabSize: 2,
+            });
+            codeEditor.setSize('100%', '60vh');
+        }
+
+        function openCodeModal() {
+            editCodeModal.classList.remove('hidden');
+            ensureCodeEditor();
+            if (codeEditor) {
+                codeEditor.refresh();
+            }
+        }
+
+        function closeCodeModal() {
+            editCodeModal.classList.add('hidden');
+            currentEditResultId = 0;
+        }
+
+        async function loadResultHtml(resultId) {
+            const response = await fetch('results.php?action=get_html_code&result_id=' + encodeURIComponent(String(resultId)));
+            const payload = await response.json();
+            if (!payload || !payload.success) {
+                throw new Error(payload && payload.message ? payload.message : 'Unable to load HTML code.');
+            }
+
+            return String(payload.html || '');
+        }
+
+        editCodeButtons.forEach((button) => {
+            button.addEventListener('click', async function () {
+                const resultId = Number(button.getAttribute('data-result-id') || '0');
+                if (!resultId) {
+                    return;
+                }
+
+                const originalText = button.textContent;
+                button.disabled = true;
+                button.textContent = '...';
+
+                try {
+                    currentEditResultId = resultId;
+                    let htmlCode = await loadResultHtml(resultId);
+
+                    if (typeof html_beautify === 'function') {
+                        htmlCode = html_beautify(htmlCode, {
+                            indent_size: 2,
+                            preserve_newlines: true,
+                            wrap_line_length: 120,
+                        });
+                    }
+
+                    openCodeModal();
+                    if (codeEditor) {
+                        codeEditor.setValue(htmlCode);
+                        codeEditor.focus();
+                    } else if (codeEditorArea) {
+                        codeEditorArea.value = htmlCode;
+                    }
+                } catch (err) {
+                    alert(err.message || 'Unable to load HTML code.');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
+            });
+        });
+
+        async function saveCodeChanges() {
+            if (!currentEditResultId) {
+                return;
+            }
+
+            const htmlCode = codeEditor ? codeEditor.getValue() : String(codeEditorArea.value || '');
+            const formData = new FormData();
+            formData.append('action', 'save_html_code');
+            formData.append('result_id', String(currentEditResultId));
+            formData.append('html_code', htmlCode);
+            formData.append('ajax', '1');
+
+            const response = await fetch('results.php', {
+                method: 'POST',
+                body: formData,
+            });
+            const payload = await response.json();
+            if (!payload || !payload.success) {
+                throw new Error(payload && payload.message ? payload.message : 'Unable to save HTML code.');
+            }
+
+            alert(payload.message || 'HTML code saved successfully.');
+            closeCodeModal();
+        }
+
+        if (saveCodeBtn) {
+            saveCodeBtn.addEventListener('click', async function () {
+                saveCodeBtn.disabled = true;
+                const originalText = saveCodeBtn.textContent;
+                saveCodeBtn.textContent = 'Saving...';
+                try {
+                    await saveCodeChanges();
+                } catch (err) {
+                    alert(err.message || 'Unable to save HTML code.');
+                } finally {
+                    saveCodeBtn.disabled = false;
+                    saveCodeBtn.textContent = originalText;
+                }
+            });
+        }
+
+        if (cancelCodeBtn) {
+            cancelCodeBtn.addEventListener('click', function () {
+                closeCodeModal();
+            });
+        }
+
+        if (closeCodeModalBtn) {
+            closeCodeModalBtn.addEventListener('click', function () {
+                closeCodeModal();
+            });
+        }
+
+        document.querySelectorAll('[data-close-modal="1"]').forEach((node) => {
+            node.addEventListener('click', function () {
+                closeCodeModal();
             });
         });
     </script>

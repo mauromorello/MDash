@@ -100,12 +100,18 @@ function ensureResultsTable(PDO $pdo): void {
             id_template INT NOT NULL,
             final_prompt TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             thumbnail_path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             id_owner INT NOT NULL,
             is_public INT NOT NULL DEFAULT '0',
             is_hidden INT NOT NULL DEFAULT '0',
             PRIMARY KEY (id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+
+    $htmlColumn = $pdo->query("SHOW COLUMNS FROM results LIKE 'HTML'")->fetch(PDO::FETCH_ASSOC);
+    if (!$htmlColumn) {
+        $pdo->exec("ALTER TABLE results ADD COLUMN `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL AFTER thumbnail_path");
+    }
 }
 
 function getNextResultId(PDO $pdo): int {
@@ -394,7 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $isHidden = (int)($dashboard['is_hidden'] ?? 0);
 
             $insertStmt = $pdo->prepare(
-                'INSERT INTO results (id, path, id_template, final_prompt, thumbnail_path, id_owner, is_public, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO results (id, path, id_template, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $insertStmt->execute([
                 $resultId,
@@ -402,6 +408,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
                 $idTemplate,
                 (string)($_POST['master_prompt'] ?? $masterPrompt),
                 $thumbnailPath,
+                $generatedHtml,
                 $idOwner,
                 $isPublic,
                 $isHidden,
