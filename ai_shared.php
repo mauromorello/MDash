@@ -26,6 +26,11 @@ function mdashEnsureAiDbTable(PDO $pdo): void {
         'is_hidden',
     ];
 
+    $idColumn = $pdo->query("SHOW COLUMNS FROM ai_db LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
+    if ($idColumn && stripos((string)($idColumn['Extra'] ?? ''), 'auto_increment') === false) {
+        $pdo->exec("ALTER TABLE ai_db MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+    }
+
     foreach ($columns as $column) {
         $exists = $pdo->query("SHOW COLUMNS FROM ai_db LIKE '" . str_replace("'", "''", $column) . "'")->fetch(PDO::FETCH_ASSOC);
         if ($exists) {
@@ -33,11 +38,6 @@ function mdashEnsureAiDbTable(PDO $pdo): void {
         }
 
         switch ($column) {
-
-    $idColumn = $pdo->query("SHOW COLUMNS FROM ai_db LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
-    if ($idColumn && stripos((string)($idColumn['Extra'] ?? ''), 'auto_increment') === false) {
-        $pdo->exec("ALTER TABLE ai_db MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
-    }
             case 'date_creation':
                 $pdo->exec("ALTER TABLE ai_db ADD COLUMN date_creation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER web_end_point");
                 break;
