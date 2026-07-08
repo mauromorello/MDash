@@ -229,10 +229,7 @@ function buildThumbnailSvg(array $context): string {
 function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []): string {
     $apiKey = trim((string)($aiProfile['api_key'] ?? ''));
     if ($apiKey === '') {
-        $apiKey = getEnvironmentValue('GEMINI_API_KEY') ?: getEnvironmentValue('GOOGLE_API_KEY');
-    }
-    if ($apiKey === '') {
-        throw new RuntimeException('Missing AI API key.');
+        throw new RuntimeException('API non valida: il profilo AI selezionato non contiene una chiave API proprietaria.');
     }
 
     $provider = strtolower(trim((string)($aiProfile['provider'] ?? 'gemini')));
