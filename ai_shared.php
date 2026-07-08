@@ -13,6 +13,9 @@ function mdashEnsureAiDbTable(PDO $pdo): void {
             id_owner INT NOT NULL,
             is_public TINYINT(1) NOT NULL DEFAULT 0,
             is_hidden TINYINT(1) NOT NULL DEFAULT 0,
+            last_test_status VARCHAR(20) NOT NULL DEFAULT '',
+            last_test_message TEXT NOT NULL,
+            last_test_at DATETIME NULL DEFAULT NULL,
             INDEX idx_ai_db_owner (id_owner),
             INDEX idx_ai_db_visibility (is_public, is_hidden),
             INDEX idx_ai_db_date (date_creation)
@@ -24,6 +27,9 @@ function mdashEnsureAiDbTable(PDO $pdo): void {
         'id_owner',
         'is_public',
         'is_hidden',
+        'last_test_status',
+        'last_test_message',
+        'last_test_at',
     ];
 
     $idColumn = $pdo->query("SHOW COLUMNS FROM ai_db LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
@@ -49,6 +55,15 @@ function mdashEnsureAiDbTable(PDO $pdo): void {
                 break;
             case 'is_hidden':
                 $pdo->exec("ALTER TABLE ai_db ADD COLUMN is_hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER is_public");
+                break;
+            case 'last_test_status':
+                $pdo->exec("ALTER TABLE ai_db ADD COLUMN last_test_status VARCHAR(20) NOT NULL DEFAULT '' AFTER is_hidden");
+                break;
+            case 'last_test_message':
+                $pdo->exec("ALTER TABLE ai_db ADD COLUMN last_test_message TEXT NOT NULL AFTER last_test_status");
+                break;
+            case 'last_test_at':
+                $pdo->exec("ALTER TABLE ai_db ADD COLUMN last_test_at DATETIME NULL DEFAULT NULL AFTER last_test_message");
                 break;
         }
     }
@@ -159,4 +174,18 @@ function mdashFetchAccessibleAiProfile(PDO $pdo, int $aiId, int $userId, bool $i
     $row = $stmt->fetch();
 
     return $row ?: null;
+}
+
+function mdashSupportedAiProviders(): array {
+    return [
+        'gemini' => 'Gemini',
+        'openrouter' => 'OpenRouter',
+    ];
+}
+
+function mdashProviderLabel(string $provider): string {
+    $providers = mdashSupportedAiProviders();
+    $key = strtolower(trim($provider));
+
+    return $providers[$key] ?? $provider;
 }

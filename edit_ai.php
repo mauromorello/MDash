@@ -43,6 +43,8 @@ if (!$user) {
     exit;
 }
 
+$supportedProviders = mdashSupportedAiProviders();
+
 $dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
@@ -81,6 +83,8 @@ try {
             $formData[$key] = trim((string)($_POST[$key] ?? $value));
         }
 
+        $formData['provider'] = strtolower($formData['provider']);
+
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) {
             throw new RuntimeException('Invalid AI profile ID.');
@@ -90,6 +94,9 @@ try {
         }
         if ($formData['provider'] === '') {
             throw new RuntimeException('AI provider is required.');
+        }
+        if (!isset($supportedProviders[$formData['provider']])) {
+            throw new RuntimeException('Unsupported AI provider selected.');
         }
         if ($formData['model'] === '') {
             throw new RuntimeException('AI model is required.');
@@ -135,7 +142,7 @@ try {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             $formData = [
                 'title' => (string)($ai['title'] ?? ''),
-                'provider' => (string)($ai['provider'] ?? ''),
+                'provider' => strtolower((string)($ai['provider'] ?? '')),
                 'model' => (string)($ai['model'] ?? ''),
                 'api_key' => (string)($ai['api_key'] ?? ''),
                 'web_end_point' => (string)($ai['web_end_point'] ?? ''),
@@ -196,11 +203,16 @@ try {
                     <div class="form-grid">
                         <div class="field">
                             <label for="provider">Provider</label>
-                            <input type="text" id="provider" name="provider" maxlength="100" value="<?php echo h($formData['provider']); ?>" required>
+                            <select id="provider" name="provider" required>
+                                <?php foreach ($supportedProviders as $providerKey => $providerLabel): ?>
+                                    <option value="<?php echo h($providerKey); ?>"<?php echo $formData['provider'] === $providerKey ? ' selected' : ''; ?>><?php echo h($providerLabel); ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div class="field">
-                            <label for="model">Model</label>
+                            <label for="model">Model / Agent</label>
                             <input type="text" id="model" name="model" maxlength="100" value="<?php echo h($formData['model']); ?>" required>
+                            <div class="meta">Examples: <strong>gemini-flash-latest</strong> (Gemini), <strong>openai/gpt-4o</strong> (OpenRouter).</div>
                         </div>
                     </div>
                     <div class="field">
@@ -210,6 +222,7 @@ try {
                     <div class="field">
                         <label for="web_end_point">Web endpoint</label>
                         <textarea id="web_end_point" name="web_end_point" rows="3" required><?php echo h($formData['web_end_point']); ?></textarea>
+                        <div class="meta">Gemini: .../v1beta/models/{model}:generateContent | OpenRouter: https://openrouter.ai/api/v1/chat/completions</div>
                     </div>
                     <div class="form-grid">
                         <div class="field">

@@ -6,7 +6,8 @@ The project provides:
 - authentication and role-aware access (`user`, `admin`);
 - upload and metadata management for data files;
 - template and makeup profile management;
-- dashboard definition, prompt composition, and AI generation (Gemini);
+- dashboard definition, prompt composition, and AI generation (Gemini/OpenRouter);
+- AI profile management with owner-only connection tests and diagnostics;
 - generated result persistence with preview and thumbnail management.
 
 ## What The Project Does
@@ -44,12 +45,20 @@ The project provides:
   - one data source (`id_datasource`)
   - one template (`id_template`)
   - one makeup profile (`id_makeup`)
+  - one default AI profile (`id_ai_db`)
 
 ### 6. Prompt composition and AI generation
-- `dashboard_prompt.php` composes the final prompt and calls Gemini.
+- `dashboard_prompt.php` composes the final prompt and calls the selected provider (`gemini` or `openrouter`).
+- AI profile selection is per generation run (dropdown), filtered to active/accessible profiles.
+- API key is loaded from the selected AI profile in DB (no generation fallback to `.env`).
 - Final prompt sections are added only when non-empty.
 - Empty prompt fields are not included in the final prompt.
 - Duplicate sections are prevented.
+- Provider-specific request format is handled automatically:
+  - Gemini: `:generateContent` endpoint + Gemini payload
+  - OpenRouter: `/chat/completions` endpoint + chat payload
+- Generation includes a fullscreen loading overlay with JS canvas animation and rotating phrases read from `options` table entries.
+- Generation log includes practical error hints (invalid endpoint/API key/token quota/model availability).
 - Generated HTML is saved to `results/<id>/dashboard.html`.
 - A thumbnail is generated/saved and recorded in DB.
 
@@ -70,6 +79,9 @@ The project provides:
 - `makeup.php`: makeup listing and owner actions
 - `insert_makeup.php`: create makeup profile
 - `edit_makeup.php`: update makeup profile
+- `ai_db.php`: AI profiles listing, visibility, delete, and connection test
+- `insert_ai.php`: create AI profile
+- `edit_ai.php`: update AI profile
 - `dashboard_builder.php`: create dashboard definitions
 - `edit_dashboard.php`: edit dashboard definitions
 - `dashboards.php`: dashboard listing + preview + delete
@@ -168,11 +180,33 @@ title VARCHAR(255) NOT NULL,
 date_creation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 id_datasource INT DEFAULT NULL,
 id_makeup INT NOT NULL DEFAULT 0,
+id_ai_db INT NOT NULL DEFAULT 0,
 data_filter_prompt TEXT NOT NULL,
 data_manipulation_prompt TEXT NOT NULL,
 dashboard_prompt_1 TEXT NOT NULL,
 dashboard_prompt_2 TEXT NOT NULL,
 id_template INT NOT NULL DEFAULT 0
+```
+
+### `ai_db`
+
+```sql
+id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+title VARCHAR(255) NOT NULL,
+provider VARCHAR(100) NOT NULL,
+model VARCHAR(100) NOT NULL,
+api_key TEXT NOT NULL,
+web_end_point TEXT NOT NULL,
+date_creation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+id_owner INT NOT NULL,
+is_public TINYINT(1) NOT NULL DEFAULT 0,
+is_hidden TINYINT(1) NOT NULL DEFAULT 0,
+last_test_status VARCHAR(20) NOT NULL DEFAULT '',
+last_test_message TEXT NOT NULL,
+last_test_at DATETIME NULL DEFAULT NULL,
+INDEX idx_ai_db_owner (id_owner),
+INDEX idx_ai_db_visibility (is_public, is_hidden),
+INDEX idx_ai_db_date (date_creation)
 ```
 
 ### `results`
@@ -181,12 +215,35 @@ id_template INT NOT NULL DEFAULT 0
 id INT NOT NULL PRIMARY KEY,
 path TEXT NOT NULL,
 id_template INT NOT NULL,
+id_ai_db INT NOT NULL DEFAULT 0,
+ai_title VARCHAR(255) NOT NULL DEFAULT '',
+ai_provider VARCHAR(100) NOT NULL DEFAULT '',
+ai_model VARCHAR(100) NOT NULL DEFAULT '',
 final_prompt TEXT NOT NULL,
 thumbnail_path TEXT NOT NULL,
+HTML LONGTEXT NOT NULL,
 id_owner INT NOT NULL,
 is_public INT NOT NULL DEFAULT 0,
 is_hidden INT NOT NULL DEFAULT 0
 ```
+
+### `options`
+
+Generic key/value options table used for app-level settings and runtime text content.
+
+```sql
+option_key VARCHAR(191) NOT NULL PRIMARY KEY,
+option_value LONGTEXT NOT NULL,
+value_type VARCHAR(20) NOT NULL DEFAULT 'text',
+updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+```
+
+For loading overlay phrases, one phrase per row is stored as:
+
+- `dashboard.loading_phrases.en.001`
+- `dashboard.loading_phrases.en.002`
+- ...
+- `dashboard.loading_phrases.en.120`
 
 ## Data And Filesystem Layout
 
@@ -203,7 +260,9 @@ Current behavior:
 - no placeholder text is inserted for empty prompt fields;
 - duplicate sections are prevented;
 - makeup section includes both `prompt_makeup` and `palette` JSON;
-- data source section includes file metadata and URL when available.
+- data source section includes file metadata and URL when available;
+- selected AI profile (provider/model/endpoint) is used for each generation run;
+- loading overlay phrases are fetched from `options` table (`dashboard.loading_phrases.en.*`).
 
 ## Environment Variables
 
@@ -212,11 +271,13 @@ Expected variables (with current defaults where present):
 - `DB_NAME` (default `mdash`)
 - `DB_USER` (default `root`)
 - `DB_PASS` (default `zxca$dqwe123`)
-- `GEMINI_API_KEY` or `GOOGLE_API_KEY` (required for generation)
+
+Note: generation now uses API keys stored in `ai_db.api_key` per profile.
 
 ## Notes
 
 - Some schema compatibility logic supports old installations (for example `is_active`/`is_enabled` coexistence on `users`).
 - IDs for `results.id` and `makeup.id_makeup` currently use `MAX(id)+1` strategy.
 - Ownership checks are enforced for mutable actions (edit/delete/hide/upload-thumbnail).
+- Supported AI providers at runtime are currently `gemini` and `openrouter`.
 

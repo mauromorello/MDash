@@ -103,39 +103,6 @@ function getAiErrorHint(string $errorMessage): string {
     return '';
 }
 
-function getEnvironmentValue(string $name): string {
-    $value = getenv($name);
-    if ($value !== false && $value !== '') {
-        return (string)$value;
-    }
-
-    $dotenvPath = __DIR__ . DIRECTORY_SEPARATOR . '.env';
-    if (!is_readable($dotenvPath)) {
-        return '';
-    }
-
-    $lines = file($dotenvPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    if ($lines === false) {
-        return '';
-    }
-
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
-            continue;
-        }
-
-        [$key, $rawValue] = array_map('trim', explode('=', $line, 2));
-        if ($key !== $name) {
-            continue;
-        }
-
-        return trim($rawValue, "\"'");
-    }
-
-    return '';
-}
-
 function ensureResultsTable(PDO $pdo): void {
     mdashEnsureResultsAiColumns($pdo);
 }
@@ -260,6 +227,41 @@ function buildThumbnailSvg(array $context): string {
         . '</svg>';
 }
 
+function getDefaultEndpointForProvider(string $provider, string $model): string {
+    if ($provider === 'openrouter') {
+        return 'https://openrouter.ai/api/v1/chat/completions';
+    }
+
+    $selectedModel = $model !== '' ? $model : 'gemini-flash-latest';
+    return 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($selectedModel) . ':generateContent';
+}
+
+function extractGeneratedText(array $decoded, string $provider): string {
+    if ($provider === 'openrouter') {
+        $content = $decoded['choices'][0]['message']['content'] ?? '';
+        if (is_array($content)) {
+            $chunks = [];
+            foreach ($content as $part) {
+                if (is_array($part) && (($part['type'] ?? '') === 'text') && isset($part['text'])) {
+                    $chunks[] = (string)$part['text'];
+                }
+            }
+            return trim(implode("\n", $chunks));
+        }
+
+        return trim((string)$content);
+    }
+
+    $text = '';
+    if (!empty($decoded['candidates'][0]['content']['parts'])) {
+        foreach ($decoded['candidates'][0]['content']['parts'] as $part) {
+            $text .= (string)($part['text'] ?? '');
+        }
+    }
+
+    return trim($text);
+}
+
 function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []): string {
     $apiKey = trim((string)($aiProfile['api_key'] ?? ''));
     if ($apiKey === '') {
@@ -267,13 +269,24 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
     }
 
     $provider = strtolower(trim((string)($aiProfile['provider'] ?? 'gemini')));
-    $model = trim((string)($aiProfile['model'] ?? 'gemini-flash-latest'));
+    $supportedProviders = mdashSupportedAiProviders();
+    if (!isset($supportedProviders[$provider])) {
+        throw new RuntimeException('Provider non supportato: ' . $provider);
+    }
+
+    $model = trim((string)($aiProfile['model'] ?? ''));
+    if ($model === '') {
+        $model = $provider === 'openrouter' ? 'openai/gpt-4o' : 'gemini-flash-latest';
+    }
+
     $endpoint = trim((string)($aiProfile['web_end_point'] ?? ''));
 
     if ($endpoint === '') {
-        $endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model !== '' ? $model : 'gemini-flash-latest') . ':generateContent';
-    } elseif (str_contains($endpoint, '{model}')) {
-        $endpoint = str_replace('{model}', rawurlencode($model !== '' ? $model : 'gemini-flash-latest'), $endpoint);
+        $endpoint = getDefaultEndpointForProvider($provider, $model);
+    }
+
+    if (str_contains($endpoint, '{model}')) {
+        $endpoint = str_replace('{model}', rawurlencode($model), $endpoint);
     }
 
     if (!filter_var($endpoint, FILTER_VALIDATE_URL)) {
@@ -284,26 +297,50 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
         throw new RuntimeException('Endpoint non riconosciuto: per Gemini serve un endpoint :generateContent.');
     }
 
-    $payload = [
-        'contents' => [
-            [
-                'parts' => [
-                    [
-                        'text' => $finalPrompt . "\n\nReturn only a complete HTML document. Do not use markdown fences."
-                    ]
-                ]
-            ]
-        ],
-    ];
+    if ($provider === 'openrouter' && !str_contains(strtolower($endpoint), '/chat/completions')) {
+        throw new RuntimeException('Endpoint non riconosciuto: per OpenRouter serve un endpoint /chat/completions.');
+    }
+
+    $requestPrompt = $finalPrompt . "\n\nReturn only a complete HTML document. Do not use markdown fences.";
+
+    $payload = [];
+    $headers = ['Content-Type: application/json'];
+
+    if ($provider === 'openrouter') {
+        $payload = [
+            'model' => $model,
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => $requestPrompt,
+                ],
+            ],
+        ];
+
+        $headers[] = 'Authorization: Bearer ' . $apiKey;
+        $headers[] = 'HTTP-Referer: ' . buildAbsolutePath('');
+        $headers[] = 'X-Title: MDash';
+    } else {
+        $payload = [
+            'contents' => [
+                [
+                    'parts' => [
+                        [
+                            'text' => $requestPrompt,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $headers[] = 'X-goog-api-key: ' . $apiKey;
+    }
 
     $ch = curl_init($endpoint);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'X-goog-api-key: ' . $apiKey,
-        ],
+        CURLOPT_HTTPHEADER => $headers,
         CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_TIMEOUT => 120,
     ]);
@@ -312,7 +349,7 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
     if ($response === false) {
         $errorMessage = curl_error($ch);
         curl_close($ch);
-        throw new RuntimeException('Gemini request failed: ' . $errorMessage);
+        throw new RuntimeException('AI request failed: ' . $errorMessage);
     }
 
     $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -353,19 +390,12 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
         }
 
         $detail = $apiMessage !== '' ? $apiMessage : $response;
-        throw new RuntimeException('Gemini API error (HTTP ' . $httpCode . '): ' . $detail);
+        throw new RuntimeException(strtoupper($provider) . ' API error (HTTP ' . $httpCode . '): ' . $detail);
     }
 
-    $text = '';
-    if (!empty($decoded['candidates'][0]['content']['parts'])) {
-        foreach ($decoded['candidates'][0]['content']['parts'] as $part) {
-            $text .= (string)($part['text'] ?? '');
-        }
-    }
-
-    $text = trim($text);
+    $text = extractGeneratedText($decoded, $provider);
     if ($text === '') {
-        throw new RuntimeException('Gemini returned an empty response.');
+        throw new RuntimeException(strtoupper($provider) . ' returned an empty response.');
     }
 
     return preg_replace('/^```(?:html)?\s*|\s*```$/i', '', $text) ?? $text;
@@ -486,7 +516,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             ensureResultsTable($pdo);
             $generationSteps[] = 'Results table is available.';
 
-            $generationSteps[] = 'Sending prompt to Gemini API.';
+            $generationSteps[] = 'Sending prompt to selected AI provider.';
 
             if ($selectedAiId > 0) {
                 $aiProfile = findAiProfileById($aiProfiles, $selectedAiId);

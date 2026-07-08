@@ -37,6 +37,147 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function buildBaseUrl(): string {
+    $isHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    $scheme = $isHttps ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
+
+    return $scheme . '://' . $host . ($basePath !== '' ? $basePath : '');
+}
+
+function testAiProfileConnection(array $profile): array {
+    $provider = strtolower(trim((string)($profile['provider'] ?? '')));
+    $apiKey = trim((string)($profile['api_key'] ?? ''));
+    $model = trim((string)($profile['model'] ?? ''));
+    $endpoint = trim((string)($profile['web_end_point'] ?? ''));
+
+    $supportedProviders = mdashSupportedAiProviders();
+    if (!isset($supportedProviders[$provider])) {
+        throw new RuntimeException('Unsupported provider: ' . $provider);
+    }
+
+    if ($apiKey === '') {
+        throw new RuntimeException('API key is empty.');
+    }
+
+    if ($model === '') {
+        $model = $provider === 'openrouter' ? 'openai/gpt-4o' : 'gemini-flash-latest';
+    }
+
+    if ($endpoint === '') {
+        if ($provider === 'openrouter') {
+            $endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+        } else {
+            $endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
+        }
+    }
+
+    if (str_contains($endpoint, '{model}')) {
+        $endpoint = str_replace('{model}', rawurlencode($model), $endpoint);
+    }
+
+    if (!filter_var($endpoint, FILTER_VALIDATE_URL)) {
+        throw new RuntimeException('Endpoint URL is invalid.');
+    }
+
+    if ($provider === 'gemini' && !str_contains(strtolower($endpoint), ':generatecontent')) {
+        throw new RuntimeException('Gemini endpoint must include :generateContent.');
+    }
+
+    if ($provider === 'openrouter' && !str_contains(strtolower($endpoint), '/chat/completions')) {
+        throw new RuntimeException('OpenRouter endpoint must include /chat/completions.');
+    }
+
+    $headers = ['Content-Type: application/json'];
+    $payload = [];
+
+    if ($provider === 'openrouter') {
+        $payload = [
+            'model' => $model,
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => 'Reply with OK only.',
+                ],
+            ],
+            'max_tokens' => 16,
+            'temperature' => 0,
+        ];
+        $headers[] = 'Authorization: Bearer ' . $apiKey;
+        $headers[] = 'HTTP-Referer: ' . buildBaseUrl();
+        $headers[] = 'X-Title: MDash AI Test';
+    } else {
+        $payload = [
+            'contents' => [
+                [
+                    'parts' => [
+                        [
+                            'text' => 'Reply with OK only.',
+                        ],
+                    ],
+                ],
+            ],
+            'generationConfig' => [
+                'maxOutputTokens' => 16,
+                'temperature' => 0,
+            ],
+        ];
+        $headers[] = 'X-goog-api-key: ' . $apiKey;
+    }
+
+    $startedAt = microtime(true);
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_TIMEOUT => 30,
+    ]);
+
+    $response = curl_exec($ch);
+    if ($response === false) {
+        $errorMessage = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException('Network error: ' . $errorMessage);
+    }
+
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $decoded = json_decode($response, true);
+    if ($httpCode < 200 || $httpCode >= 300) {
+        $apiMessage = trim((string)($decoded['error']['message'] ?? ''));
+        $detail = $apiMessage !== '' ? $apiMessage : $response;
+        throw new RuntimeException('HTTP ' . $httpCode . ': ' . $detail);
+    }
+
+    $reply = '';
+    if ($provider === 'openrouter') {
+        $content = $decoded['choices'][0]['message']['content'] ?? '';
+        $reply = is_string($content) ? trim($content) : '';
+    } else {
+        if (!empty($decoded['candidates'][0]['content']['parts'])) {
+            foreach ($decoded['candidates'][0]['content']['parts'] as $part) {
+                $reply .= (string)($part['text'] ?? '');
+            }
+            $reply = trim($reply);
+        }
+    }
+
+    $elapsedMs = (int)round((microtime(true) - $startedAt) * 1000);
+    $message = 'Connection OK in ' . $elapsedMs . ' ms';
+    if ($reply !== '') {
+        $message .= ' - Reply: ' . substr($reply, 0, 120);
+    }
+
+    return [
+        'status' => 'ok',
+        'message' => $message,
+    ];
+}
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -85,6 +226,30 @@ try {
         exit;
     }
 
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'test_ai_db') {
+        $idAi = (int)($_POST['id_ai_db'] ?? 0);
+        $stmt = $pdo->prepare('SELECT * FROM ai_db WHERE id = ? AND id_owner = ? LIMIT 1');
+        $stmt->execute([$idAi, (int)$user['id']]);
+        $profile = $stmt->fetch();
+
+        if (!$profile) {
+            throw new RuntimeException('AI profile not found or not owned by current user.');
+        }
+
+        try {
+            $result = testAiProfileConnection($profile);
+            $update = $pdo->prepare('UPDATE ai_db SET last_test_status = ?, last_test_message = ?, last_test_at = NOW() WHERE id = ? AND id_owner = ?');
+            $update->execute([(string)$result['status'], (string)$result['message'], $idAi, (int)$user['id']]);
+            header('Location: ai_db.php?tested=1');
+            exit;
+        } catch (Throwable $testError) {
+            $update = $pdo->prepare('UPDATE ai_db SET last_test_status = ?, last_test_message = ?, last_test_at = NOW() WHERE id = ? AND id_owner = ?');
+            $update->execute(['error', substr($testError->getMessage(), 0, 1000), $idAi, (int)$user['id']]);
+            header('Location: ai_db.php?test_failed=1');
+            exit;
+        }
+    }
+
     $where = $showHidden
         ? '((a.id_owner = :user_id) OR (a.is_public = 1 AND a.is_hidden = 0))'
         : '((a.id_owner = :user_id AND a.is_hidden = 0) OR (a.is_public = 1 AND a.is_hidden = 0))';
@@ -112,6 +277,10 @@ if (!empty($_GET['created'])) {
     $message = 'AI profile hidden successfully.';
 } elseif (!empty($_GET['revealed'])) {
     $message = 'AI profile revealed successfully.';
+} elseif (!empty($_GET['tested'])) {
+    $message = 'AI connection test completed successfully.';
+} elseif (!empty($_GET['test_failed'])) {
+    $message = 'AI connection test failed. Check Last Test column for details.';
 }
 ?>
 <!DOCTYPE html>
@@ -172,6 +341,7 @@ if (!empty($_GET['created'])) {
                             <th>Endpoint</th>
                             <th>Owner</th>
                             <th>Visibility</th>
+                            <th>Last Test</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -191,9 +361,30 @@ if (!empty($_GET['created'])) {
                                     <?php endif; ?>
                                 </td>
                                 <td>
+                                    <?php $testStatus = strtolower((string)($row['last_test_status'] ?? '')); ?>
+                                    <?php if ($testStatus === 'ok'): ?>
+                                        <span class="pill">OK</span>
+                                    <?php elseif ($testStatus === 'error'): ?>
+                                        <span class="pill" style="background:#fee2e2;color:#b91c1c;">Error</span>
+                                    <?php else: ?>
+                                        <span class="meta">Not tested</span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row['last_test_at'])): ?>
+                                        <div class="meta"><?php echo h($row['last_test_at']); ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row['last_test_message'])): ?>
+                                        <div class="meta wrap-anywhere"><?php echo h($row['last_test_message']); ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
                                     <?php if ((int)$row['id_owner'] === (int)$user['id']): ?>
                                         <div class="inline-actions">
                                             <a href="edit_ai.php?id=<?php echo h($row['id']); ?>">Edit</a>
+                                            <form method="post">
+                                                <input type="hidden" name="action" value="test_ai_db">
+                                                <input type="hidden" name="id_ai_db" value="<?php echo h($row['id']); ?>">
+                                                <button type="submit" class="secondary">Test connection</button>
+                                            </form>
                                             <form method="post">
                                                 <input type="hidden" name="action" value="set_hidden">
                                                 <input type="hidden" name="id_ai_db" value="<?php echo h($row['id']); ?>">

@@ -138,6 +138,12 @@ a:hover { text-decoration: underline; }
 .table-wrap {
   overflow-x: auto;
 }
+
+.wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
