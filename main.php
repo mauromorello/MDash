@@ -93,6 +93,14 @@ function h($value) {
                 </div>
 
                 <div class="main-section-card">
+                    <h2>AI Profiles</h2>
+                    <div class="main-action-item">
+                        <a href="ai_db.php" class="btn btn-secondary">AI Library</a>
+                        <p class="main-action-desc">Store your personal AI keys, models, and endpoints for generation.</p>
+                    </div>
+                </div>
+
+                <div class="main-section-card">
                     <h2>Dashboard Builder</h2>
                     <div class="main-action-item">
                         <a href="dashboard_builder.php" class="btn btn-accent">Create Dashboard</a>

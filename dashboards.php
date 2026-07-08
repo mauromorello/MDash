@@ -33,6 +33,8 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -60,20 +62,8 @@ try {
         ]
     );
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS dashboards (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            title VARCHAR(255) NOT NULL,
-            date_creation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            id_datasource INT DEFAULT NULL,
-            id_makeup INT NOT NULL DEFAULT 0,
-            data_filter_prompt TEXT NOT NULL,
-            data_manipulation_prompt TEXT NOT NULL,
-            dashboard_prompt_1 TEXT NOT NULL,
-            dashboard_prompt_2 TEXT NOT NULL,
-            id_template INT NOT NULL DEFAULT 0
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-    );
+    mdashEnsureDashboardAiColumn($pdo);
+    mdashEnsureAiDbTable($pdo);
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -95,7 +85,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 if ($pdo) {
     try {
         $stmt = $pdo->query(
-            'SELECT d.*, u.filename AS datasource_filename FROM dashboards d LEFT JOIN uploads u ON u.id = d.id_datasource ORDER BY d.id DESC'
+            'SELECT d.*, u.filename AS datasource_filename, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model
+             FROM dashboards d
+             LEFT JOIN uploads u ON u.id = d.id_datasource
+             LEFT JOIN ai_db a ON a.id = d.id_ai_db
+             ORDER BY d.id DESC'
         );
         $dashboards = $stmt->fetchAll();
     } catch (PDOException $e) {
@@ -139,6 +133,7 @@ if (!empty($_GET['created'])) {
             </div>
             <div class="inline-actions">
                 <a href="dashboard_builder.php">New dashboard</a>
+                <a href="ai_db.php">AI profiles</a>
                 <a href="makeup.php">Makeup library</a>
                 <a href="results.php">Generated results</a>
             </div>
@@ -165,6 +160,7 @@ if (!empty($_GET['created'])) {
                             <th>Created At</th>
                             <th>Data Source</th>
                             <th>Makeup ID</th>
+                            <th>AI Profile</th>
                             <th>Template ID</th>
                             <th>Actions</th>
                         </tr>
@@ -186,6 +182,16 @@ if (!empty($_GET['created'])) {
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo h($dashboard['id_makeup']); ?></td>
+                                <td>
+                                    <?php if (!empty($dashboard['id_ai_db'])): ?>
+                                        #<?php echo h($dashboard['id_ai_db']); ?>
+                                        <?php if (!empty($dashboard['ai_title'])): ?>
+                                            <div class="meta"><?php echo h($dashboard['ai_title']); ?><?php echo !empty($dashboard['ai_provider']) || !empty($dashboard['ai_model']) ? ' (' . h($dashboard['ai_provider']) . ' / ' . h($dashboard['ai_model']) . ')' : ''; ?></div>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo h($dashboard['id_template']); ?></td>
                                 <td>
                                     <div class="inline-actions">

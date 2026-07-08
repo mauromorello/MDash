@@ -35,6 +35,8 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 function buildAbsolutePath(string $relativePath): string {
     $isHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
     $scheme = $isHttps ? 'https' : 'http';
@@ -125,33 +127,8 @@ try {
         ]
     );
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS results (
-            id INT NOT NULL,
-            path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            id_template INT NOT NULL,
-            final_prompt TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            thumbnail_path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            id_owner INT NOT NULL,
-            is_public INT NOT NULL DEFAULT '0',
-            is_hidden INT NOT NULL DEFAULT '0',
-            PRIMARY KEY (id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-    );
-
-    $tableExists = $pdo->query("SHOW TABLES LIKE 'results'")->fetchColumn();
-    if ($tableExists) {
-        $idColumn = $pdo->query("SHOW COLUMNS FROM results LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
-        if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
-            $pdo->exec("ALTER TABLE results MODIFY COLUMN id INT NOT NULL");
-        }
-
-        $htmlColumn = $pdo->query("SHOW COLUMNS FROM results LIKE 'HTML'")->fetch(PDO::FETCH_ASSOC);
-        if (!$htmlColumn) {
-            $pdo->exec("ALTER TABLE results ADD COLUMN `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL AFTER thumbnail_path");
-        }
-    }
+    mdashEnsureResultsAiColumns($pdo);
+    mdashEnsureAiDbTable($pdo);
 
     if (($_GET['action'] ?? '') === 'get_html_code') {
         $resultId = (int)($_GET['result_id'] ?? 0);
@@ -287,10 +264,11 @@ try {
         : '((r.id_owner = :user_id AND r.is_hidden = 0) OR (r.is_public = 1 AND r.is_hidden = 0))';
 
     $stmt = $pdo->prepare(
-        'SELECT r.*, t.title AS template_title, u.username AS owner_username
+           'SELECT r.*, t.title AS template_title, u.username AS owner_username, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model
          FROM results r
          LEFT JOIN templates t ON t.id = r.id_template
          LEFT JOIN users u ON u.id = r.id_owner
+            LEFT JOIN ai_db a ON a.id = r.id_ai_db
          WHERE ' . $visibilityWhere . '
          ORDER BY r.id DESC'
     );
@@ -374,6 +352,7 @@ try {
                         <div class="result-meta">
                             <strong>Result #<?php echo h($result['id']); ?></strong>
                             <span>Template: <?php echo h($result['template_title'] ?: ('#' . $result['id_template'])); ?></span>
+                            <span>AI: <?php echo h($result['ai_title'] ?: ('#' . $result['id_ai_db'])); ?><?php echo !empty($result['ai_provider']) || !empty($result['ai_model']) ? ' (' . h($result['ai_provider']) . ' / ' . h($result['ai_model']) . ')' : ''; ?></span>
                             <span>Visibility: <?php echo ((int)$result['is_public'] === 1) ? 'Public' : 'Private'; ?><?php echo ((int)$result['is_hidden'] === 1) ? ' / Hidden' : ''; ?></span>
                             <span>Saved path: <?php echo h($result['path']); ?></span>
                         </div>

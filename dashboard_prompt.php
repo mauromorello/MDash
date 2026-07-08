@@ -35,6 +35,8 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 function buildAbsolutePath(string $relativePath): string {
     $isHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
     $scheme = $isHttps ? 'https' : 'http';
@@ -93,25 +95,7 @@ function getEnvironmentValue(string $name): string {
 }
 
 function ensureResultsTable(PDO $pdo): void {
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS results (
-            id INT NOT NULL,
-            path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            id_template INT NOT NULL,
-            final_prompt TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            thumbnail_path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL,
-            id_owner INT NOT NULL,
-            is_public INT NOT NULL DEFAULT '0',
-            is_hidden INT NOT NULL DEFAULT '0',
-            PRIMARY KEY (id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-    );
-
-    $htmlColumn = $pdo->query("SHOW COLUMNS FROM results LIKE 'HTML'")->fetch(PDO::FETCH_ASSOC);
-    if (!$htmlColumn) {
-        $pdo->exec("ALTER TABLE results ADD COLUMN `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL AFTER thumbnail_path");
-    }
+    mdashEnsureResultsAiColumns($pdo);
 }
 
 function getNextResultId(PDO $pdo): int {
@@ -200,21 +184,25 @@ function buildThumbnailSvg(array $context): string {
         . '</svg>';
 }
 
-function callGeminiGenerateHtml(string $finalPrompt): string {
-    /*
-     Gemini API requirements:
-     - Set GEMINI_API_KEY in .env or server environment.
-     - Use the Gemini Generative Language REST endpoint shown in the provided curl example.
-     - Send the final prompt as a single user content payload.
-     - Ask for a complete HTML dashboard output only, without markdown fences.
-     - Handle API errors and rate limits before saving the generated file.
-    */
-    $apiKey = getEnvironmentValue('GEMINI_API_KEY') ?: getEnvironmentValue('GOOGLE_API_KEY');
+function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []): string {
+    $apiKey = trim((string)($aiProfile['api_key'] ?? ''));
     if ($apiKey === '') {
-        throw new RuntimeException('Missing Gemini API key in environment.');
+        $apiKey = getEnvironmentValue('GEMINI_API_KEY') ?: getEnvironmentValue('GOOGLE_API_KEY');
+    }
+    if ($apiKey === '') {
+        throw new RuntimeException('Missing AI API key.');
     }
 
-    $endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+    $provider = strtolower(trim((string)($aiProfile['provider'] ?? 'gemini')));
+    $model = trim((string)($aiProfile['model'] ?? 'gemini-flash-latest'));
+    $endpoint = trim((string)($aiProfile['web_end_point'] ?? ''));
+
+    if ($endpoint === '') {
+        $endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model !== '' ? $model : 'gemini-flash-latest') . ':generateContent';
+    } elseif (str_contains($endpoint, '{model}')) {
+        $endpoint = str_replace('{model}', rawurlencode($model !== '' ? $model : 'gemini-flash-latest'), $endpoint);
+    }
+
     $payload = [
         'contents' => [
             [
@@ -281,12 +269,14 @@ $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
 $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
-$pdo = null;
+    $pdo = null;
 $error = '';
 $dashboard = null;
 $upload = null;
 $template = null;
 $makeup = null;
+    $aiProfile = null;
+    $aiProfiles = [];
 $resultFilePath = '';
 $generatedHtml = '';
 $generationSteps = [];
@@ -344,7 +334,18 @@ if ($pdo && $dashboardId > 0) {
             $makeupStmt->execute([(int)$dashboard['id_makeup'], (int)$user['id']]);
             $makeup = $makeupStmt->fetch();
         }
-    } catch (PDOException $e) {
+
+        $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], true);
+        $selectedAiId = (int)($dashboard['id_ai_db'] ?? 0);
+        if ($selectedAiId > 0) {
+            $aiProfile = mdashFetchAccessibleAiProfile($pdo, $selectedAiId, (int)$user['id'], true);
+            if (!$aiProfile) {
+                throw new RuntimeException('Selected AI profile not found or not accessible.');
+            }
+        } elseif (!empty($aiProfiles)) {
+            $aiProfile = $aiProfiles[0];
+        }
+    } catch (Throwable $e) {
         $error = 'Error while loading data: ' . $e->getMessage();
     }
 }
@@ -363,7 +364,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $generationSteps[] = 'Results table is available.';
 
             $generationSteps[] = 'Sending prompt to Gemini API.';
-            $generatedHtml = callGeminiGenerateHtml((string)($_POST['master_prompt'] ?? $masterPrompt));
+            if (!$aiProfile && !empty($aiProfiles)) {
+                $aiProfile = $aiProfiles[0];
+            }
+
+            if ($aiProfile) {
+                $generationSteps[] = 'Using AI profile: ' . (string)($aiProfile['title'] ?? ('#' . (string)($aiProfile['id'] ?? 0)));
+            } else {
+                $generationSteps[] = 'No AI profile selected. Falling back to environment credentials if available.';
+            }
+
+            $generatedHtml = callConfiguredAiGenerateHtml((string)($_POST['master_prompt'] ?? $masterPrompt), $aiProfile ?? []);
             $generationSteps[] = 'AI response received successfully.';
             $generationSteps[] = 'Generated HTML length: ' . strlen($generatedHtml) . ' bytes.';
 
@@ -395,17 +406,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             );
             $generationSteps[] = 'Generated thumbnail SVG preview.';
             $idTemplate = (int)($dashboard['id_template'] ?? 0);
+            $idAiDb = (int)($dashboard['id_ai_db'] ?? (($aiProfile['id'] ?? 0) ?: 0));
             $idOwner = (int)$user['id'];
             $isPublic = (int)($dashboard['is_public'] ?? 0);
             $isHidden = (int)($dashboard['is_hidden'] ?? 0);
 
             $insertStmt = $pdo->prepare(
-                'INSERT INTO results (id, path, id_template, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $insertStmt->execute([
                 $resultId,
                 $relativePath,
                 $idTemplate,
+                $idAiDb,
+                (string)($aiProfile['title'] ?? ''),
+                (string)($aiProfile['provider'] ?? ''),
+                (string)($aiProfile['model'] ?? ''),
                 (string)($_POST['master_prompt'] ?? $masterPrompt),
                 $thumbnailPath,
                 $generatedHtml,
