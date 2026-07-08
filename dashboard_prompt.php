@@ -49,6 +49,16 @@ function normalizeSection(string $title, string $content): string {
     return "[" . $title . "]\n" . trim($content) . "\n";
 }
 
+function addSectionIfNotEmpty(array &$sections, array &$seenTitles, string $title, string $content): void {
+    $trimmed = trim($content);
+    if ($trimmed === '' || isset($seenTitles[$title])) {
+        return;
+    }
+
+    $sections[] = normalizeSection($title, $trimmed);
+    $seenTitles[$title] = true;
+}
+
 function getEnvironmentValue(string $name): string {
     $value = getenv($name);
     if ($value !== false && $value !== '') {
@@ -270,6 +280,7 @@ $error = '';
 $dashboard = null;
 $upload = null;
 $template = null;
+$makeup = null;
 $resultFilePath = '';
 $generatedHtml = '';
 $generationSteps = [];
@@ -314,6 +325,18 @@ if ($pdo && $dashboardId > 0) {
             );
             $templateStmt->execute([(int)$dashboard['id_template'], (int)$user['id']]);
             $template = $templateStmt->fetch();
+        }
+
+        if ($dashboard && !empty($dashboard['id_makeup'])) {
+            $makeupStmt = $pdo->prepare(
+                'SELECT m.id_makeup, m.name, m.prompt_makeup, m.palette, m.id_owner, m.is_private, m.is_hidden, u.username AS owner_username
+                 FROM makeup m
+                 LEFT JOIN users u ON u.id = m.id_owner
+                 WHERE m.id_makeup = ? AND (m.id_owner = ? OR m.is_private = 0) AND m.is_hidden = 0
+                 LIMIT 1'
+            );
+            $makeupStmt->execute([(int)$dashboard['id_makeup'], (int)$user['id']]);
+            $makeup = $makeupStmt->fetch();
         }
     } catch (PDOException $e) {
         $error = 'Error while loading data: ' . $e->getMessage();
@@ -405,37 +428,83 @@ if ($dashboard) {
     $dataSourceTags = (string)($upload['tags'] ?? '');
 
     $sections = [];
-    $sections[] = normalizeSection('Dashboard title', $promptTitle);
-    $sections[] = normalizeSection(
-        'Data source',
-        "Data source ID: " . $dataSourceId . "\n" .
-        "File name: " . $dataSourceFilename . "\n" .
-        "Relative file path: " . ($dataSourceRelativePath !== '' ? $dataSourceRelativePath : 'N/A') . "\n" .
-        "Absolute file URL: " . ($dataSourceAbsoluteUrl !== '' ? $dataSourceAbsoluteUrl : 'N/A') . "\n" .
-        "Description: " . ($dataSourceDescription !== '' ? $dataSourceDescription : 'N/A') . "\n" .
-        "Tags: " . ($dataSourceTags !== '' ? $dataSourceTags : 'N/A')
-    );
-    $sections[] = normalizeSection(
-        'Dashboard prompt',
-        "Data filter prompt:\n" . ($dashboard['data_filter_prompt'] ?? '') . "\n\n" .
-        "Data manipulation prompt:\n" . ($dashboard['data_manipulation_prompt'] ?? '') . "\n\n" .
-        "Dashboard prompt 1:\n" . ($dashboard['dashboard_prompt_1'] ?? '') . "\n\n" .
-        "Dashboard prompt 2:\n" . ($dashboard['dashboard_prompt_2'] ?? '')
-    );
-    $sections[] = normalizeSection(
-        'Template',
-        "Template ID: " . (string)($dashboard['id_template'] ?? 0) . "\n" .
-        "Template title: " . ($template['title'] ?? 'N/A') . "\n\n" .
-        ($template && !empty($template['prompt']) ? (string)$template['prompt'] : '')
-    );
-    $sections[] = normalizeSection(
-        'Makeup',
-        ''
-    );
-    $sections[] = normalizeSection(
-        'Error output',
-        $error !== '' ? $error : 'None'
-    );
+    $seenTitles = [];
+
+    addSectionIfNotEmpty($sections, $seenTitles, 'Dashboard title', $promptTitle);
+
+    $dataSourceLines = [];
+    if ($dataSourceId > 0) {
+        $dataSourceLines[] = 'Data source ID: ' . $dataSourceId;
+    }
+    if ($dataSourceFilename !== '' && $dataSourceFilename !== 'N/A') {
+        $dataSourceLines[] = 'File name: ' . $dataSourceFilename;
+    }
+    if ($dataSourceRelativePath !== '') {
+        $dataSourceLines[] = 'Relative file path: ' . $dataSourceRelativePath;
+    }
+    if ($dataSourceAbsoluteUrl !== '') {
+        $dataSourceLines[] = 'Absolute file URL: ' . $dataSourceAbsoluteUrl;
+    }
+    if ($dataSourceDescription !== '') {
+        $dataSourceLines[] = 'Description: ' . $dataSourceDescription;
+    }
+    if ($dataSourceTags !== '') {
+        $dataSourceLines[] = 'Tags: ' . $dataSourceTags;
+    }
+    addSectionIfNotEmpty($sections, $seenTitles, 'Data source', implode("\n", $dataSourceLines));
+
+    $dashboardPromptLines = [];
+    $dataFilterPrompt = trim((string)($dashboard['data_filter_prompt'] ?? ''));
+    if ($dataFilterPrompt !== '') {
+        $dashboardPromptLines[] = "Data filter prompt:\n" . $dataFilterPrompt;
+    }
+    $dataManipulationPrompt = trim((string)($dashboard['data_manipulation_prompt'] ?? ''));
+    if ($dataManipulationPrompt !== '') {
+        $dashboardPromptLines[] = "Data manipulation prompt:\n" . $dataManipulationPrompt;
+    }
+    $dashboardPrompt1 = trim((string)($dashboard['dashboard_prompt_1'] ?? ''));
+    if ($dashboardPrompt1 !== '') {
+        $dashboardPromptLines[] = "Dashboard prompt 1:\n" . $dashboardPrompt1;
+    }
+    $dashboardPrompt2 = trim((string)($dashboard['dashboard_prompt_2'] ?? ''));
+    if ($dashboardPrompt2 !== '') {
+        $dashboardPromptLines[] = "Dashboard prompt 2:\n" . $dashboardPrompt2;
+    }
+    addSectionIfNotEmpty($sections, $seenTitles, 'Dashboard prompt', implode("\n\n", $dashboardPromptLines));
+
+    $templateLines = [];
+    if (!empty($dashboard['id_template'])) {
+        $templateLines[] = 'Template ID: ' . (string)$dashboard['id_template'];
+    }
+    if (!empty($template['title'])) {
+        $templateLines[] = 'Template title: ' . (string)$template['title'];
+    }
+    $templatePrompt = trim((string)($template['prompt'] ?? ''));
+    if ($templatePrompt !== '') {
+        $templateLines[] = $templatePrompt;
+    }
+    addSectionIfNotEmpty($sections, $seenTitles, 'Template', implode("\n\n", $templateLines));
+
+    $makeupLines = [];
+    if (!empty($dashboard['id_makeup'])) {
+        $makeupLines[] = 'Makeup ID: ' . (string)$dashboard['id_makeup'];
+    }
+    if (!empty($makeup['name'])) {
+        $makeupLines[] = 'Makeup name: ' . (string)$makeup['name'];
+    }
+    $makeupPrompt = trim((string)($makeup['prompt_makeup'] ?? ''));
+    if ($makeupPrompt !== '') {
+        $makeupLines[] = "Makeup prompt:\n" . $makeupPrompt;
+    }
+    $makeupPalette = trim((string)($makeup['palette'] ?? ''));
+    if ($makeupPalette !== '') {
+        $makeupLines[] = "Palette JSON:\n" . $makeupPalette;
+    }
+    addSectionIfNotEmpty($sections, $seenTitles, 'Makeup', implode("\n\n", $makeupLines));
+
+    if ($error !== '') {
+        addSectionIfNotEmpty($sections, $seenTitles, 'Error output', $error);
+    }
 
     $masterPrompt = implode("\n", $sections);
 }

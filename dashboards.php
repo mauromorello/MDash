@@ -139,6 +139,7 @@ if (!empty($_GET['created'])) {
             </div>
             <div class="inline-actions">
                 <a href="dashboard_builder.php">New dashboard</a>
+                <a href="makeup.php">Makeup library</a>
                 <a href="results.php">Generated results</a>
             </div>
         </div>

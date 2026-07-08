@@ -50,6 +50,7 @@ $pdo = null;
 $dashboard = null;
 $uploads = [];
 $templates = [];
+$makeups = [];
 $error = '';
 $message = '';
 $dashboardId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
@@ -102,19 +103,54 @@ try {
     );
     $templatesStmt->execute([(int)$user['id']]);
     $templates = $templatesStmt->fetchAll();
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS makeup (
+            id_makeup INT NOT NULL,
+            date_makeup DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_owner INT NOT NULL,
+            prompt_makeup TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            is_private INT NOT NULL DEFAULT 1,
+            is_hidden INT NOT NULL DEFAULT 0,
+            name VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+            palette TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            PRIMARY KEY (id_makeup),
+            INDEX idx_makeup_owner (id_owner),
+            INDEX idx_makeup_private_hidden (is_private, is_hidden)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
+    $makeupStmt = $pdo->prepare(
+        "SELECT m.id_makeup, m.name, m.id_owner, m.is_private, m.is_hidden, u.username AS owner_username
+         FROM makeup m
+         LEFT JOIN users u ON u.id = m.id_owner
+         WHERE (m.id_owner = ? OR m.is_private = 0) AND m.is_hidden = 0
+         ORDER BY m.id_makeup DESC"
+    );
+    $makeupStmt->execute([(int)$user['id']]);
+    $makeups = $makeupStmt->fetchAll();
 } catch (PDOException $e) {
     $error = 'Database error: ' . $e->getMessage();
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_dashboard' && $pdo) {
     try {
+        $selectedMakeupId = (int)($_POST['id_makeup'] ?? 0);
+        if ($selectedMakeupId > 0) {
+            $makeupCheckStmt = $pdo->prepare('SELECT id_makeup FROM makeup WHERE id_makeup = ? AND (id_owner = ? OR is_private = 0) LIMIT 1');
+            $makeupCheckStmt->execute([$selectedMakeupId, (int)$user['id']]);
+            if (!$makeupCheckStmt->fetch()) {
+                throw new RuntimeException('Selected makeup not found or not accessible.');
+            }
+        }
+
         $stmt = $pdo->prepare(
             'UPDATE dashboards SET title = ?, id_datasource = ?, id_makeup = ?, data_filter_prompt = ?, data_manipulation_prompt = ?, dashboard_prompt_1 = ?, dashboard_prompt_2 = ?, id_template = ? WHERE id = ?'
         );
         $stmt->execute([
             trim((string)($_POST['title'] ?? '')),
             ($_POST['id_datasource'] ?? '') !== '' ? (int)$_POST['id_datasource'] : null,
-            (int)($_POST['id_makeup'] ?? 0),
+            $selectedMakeupId,
             trim((string)($_POST['data_filter_prompt'] ?? '')),
             trim((string)($_POST['data_manipulation_prompt'] ?? '')),
             trim((string)($_POST['dashboard_prompt_1'] ?? '')),
@@ -201,8 +237,16 @@ if ($pdo && $dashboardId > 0) {
                             </select>
                         </div>
                         <div class="field">
-                            <label for="id_makeup">Makeup ID</label>
-                            <input type="text" id="id_makeup" name="id_makeup" value="<?php echo h($dashboard['id_makeup']); ?>">
+                            <label for="id_makeup">Makeup</label>
+                            <select id="id_makeup" name="id_makeup">
+                                <option value="0">No makeup</option>
+                                <?php foreach ($makeups as $makeup): ?>
+                                    <option value="<?php echo h($makeup['id_makeup']); ?>"<?php echo ((string)$dashboard['id_makeup'] === (string)$makeup['id_makeup']) ? ' selected' : ''; ?>>
+                                        #<?php echo h($makeup['id_makeup']); ?> - <?php echo h($makeup['name']); ?><?php echo ((int)($makeup['id_owner'] ?? 0) !== (int)$user['id']) ? ' (created by ' . h($makeup['owner_username'] ?? ('user #' . $makeup['id_owner'])) . ')' : ''; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="meta">Choose a makeup profile to include style instructions and color palette in the final prompt.</div>
                         </div>
                     </div>
 

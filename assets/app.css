@@ -709,8 +709,46 @@ input.cell-edit {
   font-size: 0.9rem;
 }
 
+.palette-picker-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(56px, 1fr));
+  gap: 10px;
+}
+
+.palette-picker-row input[type="color"] {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: #fff;
+}
+
+.palette-json-area {
+  min-height: 90px;
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.palette-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.palette-mini-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+}
+
 @media (max-width: 700px) {
   .row {
     grid-template-columns: 1fr;
+  }
+
+  .palette-picker-row {
+    grid-template-columns: repeat(5, minmax(42px, 1fr));
   }
 }

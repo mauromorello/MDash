@@ -86,6 +86,10 @@ function h($value) {
                         <a href="templates.php" class="btn btn-secondary">Template Library</a>
                         <p class="main-action-desc">Create reusable prompts and publish shared templates.</p>
                     </div>
+                    <div class="main-action-item">
+                        <a href="makeup.php" class="btn btn-secondary">Makeup Library</a>
+                        <p class="main-action-desc">Create color and style profiles to guide dashboard visual output.</p>
+                    </div>
                 </div>
 
                 <div class="main-section-card">

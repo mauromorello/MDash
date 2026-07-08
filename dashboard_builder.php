@@ -49,6 +49,7 @@ $error = '';
 $message = '';
 $uploads = [];
 $templates = [];
+$makeups = [];
 $formData = [
     'title' => '',
     'id_datasource' => '',
@@ -101,6 +102,22 @@ try {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS makeup (
+            id_makeup INT NOT NULL,
+            date_makeup DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_owner INT NOT NULL,
+            prompt_makeup TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            is_private INT NOT NULL DEFAULT 1,
+            is_hidden INT NOT NULL DEFAULT 0,
+            name VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+            palette TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            PRIMARY KEY (id_makeup),
+            INDEX idx_makeup_owner (id_owner),
+            INDEX idx_makeup_private_hidden (is_private, is_hidden)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
     $tableExists = $pdo->query("SHOW TABLES LIKE 'dashboards'")->fetchColumn();
     if ($tableExists) {
         $idColumn = $pdo->query("SHOW COLUMNS FROM dashboards LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
@@ -131,6 +148,16 @@ try {
     );
     $templatesStmt->execute([(int)$user['id']]);
     $templates = $templatesStmt->fetchAll();
+
+    $makeupStmt = $pdo->prepare(
+        "SELECT m.id_makeup, m.name, m.id_owner, m.is_private, m.is_hidden, u.username AS owner_username
+         FROM makeup m
+         LEFT JOIN users u ON u.id = m.id_owner
+         WHERE (m.id_owner = ? OR m.is_private = 0) AND m.is_hidden = 0
+         ORDER BY m.id_makeup DESC"
+    );
+    $makeupStmt->execute([(int)$user['id']]);
+    $makeups = $makeupStmt->fetchAll();
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -147,21 +174,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     } else {
         try {
             $idTemplate = (int)($formData['id_template'] !== '' ? $formData['id_template'] : 0);
-            $dashboardPrompt2 = $formData['dashboard_prompt_2'];
 
-            $verboseInstructionBlock =
-                "[Verbose operating instructions for dashboard generation]\n" .
-                "- Data source section: clearly identify source path, file name, and business context before any transformation.\n" .
-                "- Field interpretation section: explain meaning, semantic type, unit, expected values, and anomaly handling for each relevant field.\n" .
-                "- Physical file construction section: produce a complete standalone HTML output with coherent CSS and only required scripts.\n" .
-                "- Dashboard layout section: structure header, KPI area, charts, tables, and notes with responsive behavior for desktop and mobile.\n" .
-                "- Quality rules section: include clear labels, legends, empty-state handling, and fallback behavior for missing data.\n" .
-                "- Traceability section: state which blocks are raw data views and which are filtered, aggregated, or derived computations.";
-
-            $dashboardPrompt2 = trim((string)$dashboardPrompt2);
-            $dashboardPrompt2 = $dashboardPrompt2 === ''
-                ? $verboseInstructionBlock
-                : ($dashboardPrompt2 . "\n\n" . $verboseInstructionBlock);
+            if ((int)$formData['id_makeup'] > 0) {
+                $makeupCheckStmt = $pdo->prepare('SELECT id_makeup FROM makeup WHERE id_makeup = ? AND (id_owner = ? OR is_private = 0) LIMIT 1');
+                $makeupCheckStmt->execute([(int)$formData['id_makeup'], (int)$user['id']]);
+                if (!$makeupCheckStmt->fetch()) {
+                    throw new RuntimeException('Selected makeup not found or not accessible.');
+                }
+            }
 
             if ($idTemplate > 0) {
                 $templateStmt = $pdo->prepare('SELECT id, title, prompt FROM templates WHERE id = ? AND (id_owner = ? OR is_public = 1) AND is_hidden = 0 LIMIT 1');
@@ -170,12 +190,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $selectedTemplate = $templateStmt->fetch();
                 if (!$selectedTemplate) {
                     throw new RuntimeException('Selected template not found or not accessible.');
-                }
-
-                $templatePrompt = trim((string)($selectedTemplate['prompt'] ?? ''));
-                if ($templatePrompt !== '') {
-                    $templateBlock = "[Template #" . (int)$selectedTemplate['id'] . ' - ' . (string)$selectedTemplate['title'] . "]\n" . $templatePrompt;
-                    $dashboardPrompt2 = $dashboardPrompt2 . "\n\n" . $templateBlock;
                 }
             }
 
@@ -189,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $formData['data_filter_prompt'],
                 $formData['data_manipulation_prompt'],
                 $formData['dashboard_prompt_1'],
-                $dashboardPrompt2,
+                $formData['dashboard_prompt_2'],
                 $idTemplate,
             ]);
             header('Location: dashboards.php?created=1');
@@ -257,8 +271,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                         </select>
                     </div>
                     <div class="field">
-                        <label for="id_makeup">Makeup ID</label>
-                        <input type="text" id="id_makeup" name="id_makeup" value="<?php echo h($formData['id_makeup']); ?>">
+                        <label for="id_makeup">Makeup</label>
+                        <select id="id_makeup" name="id_makeup">
+                            <option value="0">No makeup</option>
+                            <?php foreach ($makeups as $makeup): ?>
+                                <option value="<?php echo h($makeup['id_makeup']); ?>"<?php echo ((string)$formData['id_makeup'] === (string)$makeup['id_makeup']) ? ' selected' : ''; ?>>
+                                    #<?php echo h($makeup['id_makeup']); ?> - <?php echo h($makeup['name']); ?><?php echo ((int)($makeup['id_owner'] ?? 0) !== (int)$user['id']) ? ' (created by ' . h($makeup['owner_username'] ?? ('user #' . $makeup['id_owner'])) . ')' : ''; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="meta">Choose a makeup profile to include style instructions and color palette in the final prompt.</div>
                     </div>
                 </div>
 
