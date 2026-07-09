@@ -13,6 +13,7 @@
 }
 
 * { box-sizing: border-box; }
+[x-cloak] { display: none !important; }
 body {
   margin: 0;
   font-family: Arial, Helvetica, sans-serif;
@@ -98,10 +99,6 @@ a:hover { text-decoration: underline; }
   gap: 6px;
   z-index: 2000;
   box-shadow: 0 14px 36px rgba(2, 6, 23, 0.5);
-}
-
-.topbar-dropdown[hidden] {
-  display: none !important;
 }
 
 .topbar-dropdown a,
