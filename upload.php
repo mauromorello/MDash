@@ -6,6 +6,8 @@ if (empty($_COOKIE['mdash_user'])) {
     exit;
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 function sendJson($success, $message, $uploadId = 0): void {
     header('Content-Type: application/json');
     echo json_encode([
@@ -49,6 +51,199 @@ function utf8Length(string $value): int {
     return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
 }
 
+function sendAiJson(bool $success, string $message, string $generatedText = ''): void {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => $success,
+        'message' => $message,
+        'generated_text' => $generatedText,
+    ]);
+    exit;
+}
+
+function readCsvSampleRows(string $absolutePath, int $maxRows = 10): array {
+    if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        throw new RuntimeException('Uploaded file is not readable.');
+    }
+
+    $rows = [];
+    $header = [];
+
+    $file = new SplFileObject($absolutePath, 'r');
+    while (!$file->eof()) {
+        $row = $file->fgetcsv();
+        if ($row === false || $row === [null]) {
+            continue;
+        }
+
+        $normalized = array_map(static fn($v) => trim((string)$v), $row);
+        if (empty($header)) {
+            $header = $normalized;
+            continue;
+        }
+
+        $rows[] = $normalized;
+        if (count($rows) >= $maxRows) {
+            break;
+        }
+    }
+
+    return [
+        'header' => $header,
+        'rows' => $rows,
+    ];
+}
+
+function buildDataSchemePrompt(array $uploadRecord, array $sample): string {
+    $fileName = (string)($uploadRecord['filename'] ?? 'data.csv');
+    $description = trim((string)($uploadRecord['description'] ?? ''));
+    $tags = trim((string)($uploadRecord['tags'] ?? ''));
+    $longDescription = trim((string)($uploadRecord['long_description'] ?? ''));
+    $header = $sample['header'] ?? [];
+    $rows = $sample['rows'] ?? [];
+
+    $tableLines = [];
+    if (!empty($header)) {
+        $tableLines[] = implode(' | ', $header);
+    }
+    foreach ($rows as $row) {
+        $tableLines[] = implode(' | ', $row);
+    }
+
+    return "You are a senior data analyst.\n"
+        . "Task: produce a detailed textual data schema for the uploaded CSV file.\n"
+        . "File name: {$fileName}\n"
+        . ($description !== '' ? "Short description: {$description}\n" : '')
+        . ($tags !== '' ? "Tags: {$tags}\n" : '')
+        . ($longDescription !== '' ? "Long description: {$longDescription}\n" : '')
+        . "\n"
+        . "How to read the sample:\n"
+        . "- First line is the header with field names.\n"
+        . "- Next lines are example records.\n"
+        . "- The sample includes only the first 10 data rows.\n"
+        . "\n"
+        . "Required output format (plain text, no markdown code fences):\n"
+        . "1) One short overview paragraph of the dataset purpose.\n"
+        . "2) A section named 'Fields' with one block per field in this exact style:\n"
+        . "   - Field: <name>\n"
+        . "   - Meaning: <business meaning>\n"
+        . "   - Observed type: <string/number/date/boolean/mixed>\n"
+        . "   - Example values: <2-3 values from sample>\n"
+        . "   - Quality notes: <missing values/format anomalies/duplicates hints>\n"
+        . "3) Final section 'Suggested checks' with validation checks to run for this dataset.\n"
+        . "\n"
+        . "CSV sample:\n"
+        . implode("\n", $tableLines);
+}
+
+function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
+    $apiKey = trim((string)($aiProfile['api_key'] ?? ''));
+    if ($apiKey === '') {
+        throw new RuntimeException('Selected AI profile has no API key.');
+    }
+
+    $provider = strtolower(trim((string)($aiProfile['provider'] ?? 'gemini')));
+    $supportedProviders = mdashSupportedAiProviders();
+    if (!isset($supportedProviders[$provider])) {
+        throw new RuntimeException('Unsupported provider: ' . $provider);
+    }
+
+    $model = trim((string)($aiProfile['model'] ?? ''));
+    if ($model === '') {
+        $model = $provider === 'openrouter' ? 'openai/gpt-4o' : 'gemini-flash-latest';
+    }
+
+    $endpoint = trim((string)($aiProfile['web_end_point'] ?? ''));
+    if ($endpoint === '') {
+        $endpoint = $provider === 'openrouter'
+            ? 'https://openrouter.ai/api/v1/chat/completions'
+            : 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
+    }
+    if (str_contains($endpoint, '{model}')) {
+        $endpoint = str_replace('{model}', rawurlencode($model), $endpoint);
+    }
+    if (!filter_var($endpoint, FILTER_VALIDATE_URL)) {
+        throw new RuntimeException('Invalid AI endpoint URL.');
+    }
+
+    $headers = ['Content-Type: application/json'];
+    $payload = [];
+
+    if ($provider === 'openrouter') {
+        $payload = [
+            'model' => $model,
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => $prompt,
+                ],
+            ],
+            'temperature' => 0.2,
+        ];
+        $baseUrl = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        $headers[] = 'Authorization: Bearer ' . $apiKey;
+        $headers[] = 'HTTP-Referer: ' . $baseUrl;
+        $headers[] = 'X-Title: MDash Upload Assistant';
+    } else {
+        $payload = [
+            'contents' => [
+                [
+                    'parts' => [
+                        ['text' => $prompt],
+                    ],
+                ],
+            ],
+            'generationConfig' => [
+                'temperature' => 0.2,
+            ],
+        ];
+        $headers[] = 'X-goog-api-key: ' . $apiKey;
+    }
+
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_TIMEOUT => 90,
+    ]);
+
+    $response = curl_exec($ch);
+    if ($response === false) {
+        $errorMessage = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException('AI request failed: ' . $errorMessage);
+    }
+
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $decoded = json_decode($response, true);
+    if ($httpCode < 200 || $httpCode >= 300) {
+        $detail = trim((string)($decoded['error']['message'] ?? $response));
+        throw new RuntimeException('AI API error (HTTP ' . $httpCode . '): ' . $detail);
+    }
+
+    $text = '';
+    if ($provider === 'openrouter') {
+        $text = trim((string)($decoded['choices'][0]['message']['content'] ?? ''));
+    } else {
+        if (!empty($decoded['candidates'][0]['content']['parts'])) {
+            foreach ($decoded['candidates'][0]['content']['parts'] as $part) {
+                $text .= (string)($part['text'] ?? '');
+            }
+        }
+        $text = trim($text);
+    }
+
+    if ($text === '') {
+        throw new RuntimeException('AI returned empty content.');
+    }
+
+    return preg_replace('/^```(?:text|markdown)?\s*|\s*```$/i', '', $text) ?? $text;
+}
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -66,6 +261,7 @@ $uploadId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $step = 'upload';
 $message = '';
 $record = null;
+$aiProfiles = [];
 
 try {
     $pdo = new PDO(
@@ -112,6 +308,17 @@ try {
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_1 MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_2 MEDIUMTEXT NOT NULL");
     }
+
+    mdashEnsureAiDbTable($pdo);
+
+    $aiProfilesStmt = $pdo->prepare(
+        'SELECT a.*
+         FROM ai_db a
+         WHERE ((a.id_owner = :user_id AND a.is_hidden = 0) OR (a.is_public = 1 AND a.is_hidden = 0))
+         ORDER BY a.id DESC'
+    );
+    $aiProfilesStmt->execute(['user_id' => (int)$user['id']]);
+    $aiProfiles = $aiProfilesStmt->fetchAll();
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
 }
@@ -224,6 +431,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Unable to complete save.';
         }
     }
+
+    if ($action === 'generate_prompt2_ai' && $pdo) {
+        $uploadId = (int)($_POST['upload_id'] ?? 0);
+        $aiId = (int)($_POST['id_ai_db'] ?? 0);
+
+        try {
+            if ($uploadId <= 0) {
+                throw new RuntimeException('Invalid upload ID.');
+            }
+            if ($aiId <= 0) {
+                throw new RuntimeException('Select an AI profile first.');
+            }
+
+            $uploadStmt = $pdo->prepare('SELECT * FROM uploads WHERE id = ? AND id_owner = ? LIMIT 1');
+            $uploadStmt->execute([$uploadId, (int)$user['id']]);
+            $uploadRecord = $uploadStmt->fetch();
+            if (!$uploadRecord) {
+                throw new RuntimeException('Upload record not found.');
+            }
+
+            $aiStmt = $pdo->prepare(
+                'SELECT * FROM ai_db WHERE id = ? AND ((id_owner = ? AND is_hidden = 0) OR (is_public = 1 AND is_hidden = 0)) LIMIT 1'
+            );
+            $aiStmt->execute([$aiId, (int)$user['id']]);
+            $aiProfile = $aiStmt->fetch();
+            if (!$aiProfile) {
+                throw new RuntimeException('Selected AI profile is not available.');
+            }
+
+            $relativePath = (string)($uploadRecord['path'] ?? '');
+            if ($relativePath === '') {
+                throw new RuntimeException('Uploaded file path is missing.');
+            }
+            $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
+            $sample = readCsvSampleRows($absolutePath, 10);
+            if (empty($sample['header'])) {
+                throw new RuntimeException('Unable to read CSV header from uploaded file.');
+            }
+
+            $prompt = buildDataSchemePrompt($uploadRecord, $sample);
+            $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
+            sendAiJson(true, 'AI schema generated successfully.', $generatedText);
+        } catch (Throwable $e) {
+            sendAiJson(false, $e->getMessage());
+        }
+    }
 }
 
 if ($uploadId > 0 && $pdo) {
@@ -305,8 +558,17 @@ if ($record) {
                             <textarea id="prompt_1" name="prompt_1" placeholder="Describe in plain language what the table contains"><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
                         </div>
                         <div class="field">
-                            <label for="prompt_2">Prompt 2</label>
-                            <textarea id="prompt_2" name="prompt_2" placeholder="Describe all fields in detail"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
+                            <label for="prompt_2">Data scheme</label>
+                            <textarea id="prompt_2" name="prompt_2" placeholder="Detailed description of every field and validation hints"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
+                            <div class="inline-actions" style="margin-top:8px;">
+                                <select id="id_ai_db" name="id_ai_db">
+                                    <option value="">Select AI profile</option>
+                                    <?php foreach ($aiProfiles as $profile): ?>
+                                        <option value="<?php echo h((int)$profile['id']); ?>">#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?> [<?php echo h((string)$profile['provider']); ?> / <?php echo h((string)$profile['model']); ?>]</option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button type="button" class="secondary" id="generateDataSchemeBtn">Read with AI (first 10 rows)</button>
+                            </div>
                         </div>
                     </div>
 
@@ -400,6 +662,61 @@ if ($record) {
                 }).finally(() => {
                     document.cookie = 'mdash_user=; path=/; max-age=0';
                     window.location.href = 'index.php';
+                });
+            });
+        }
+
+        const generateDataSchemeBtn = document.getElementById('generateDataSchemeBtn');
+        if (generateDataSchemeBtn) {
+            generateDataSchemeBtn.addEventListener('click', function () {
+                const uploadIdInput = document.querySelector('input[name="upload_id"]');
+                const aiSelect = document.getElementById('id_ai_db');
+                const prompt2Field = document.getElementById('prompt_2');
+
+                if (!uploadIdInput || !uploadIdInput.value) {
+                    alert('Upload record not found.');
+                    return;
+                }
+                if (!aiSelect || !aiSelect.value) {
+                    alert('Select an AI profile first.');
+                    return;
+                }
+                if (!prompt2Field) {
+                    alert('Data scheme field not found.');
+                    return;
+                }
+
+                generateDataSchemeBtn.disabled = true;
+                const oldText = generateDataSchemeBtn.textContent;
+                generateDataSchemeBtn.textContent = 'Reading with AI...';
+
+                const payload = new URLSearchParams({
+                    action: 'generate_prompt2_ai',
+                    upload_id: uploadIdInput.value,
+                    id_ai_db: aiSelect.value,
+                });
+
+                fetch('upload.php', {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                    },
+                    body: payload.toString(),
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (!result || !result.success) {
+                        throw new Error((result && result.message) ? result.message : 'AI request failed.');
+                    }
+                    prompt2Field.value = result.generated_text || '';
+                })
+                .catch(error => {
+                    alert(error.message || 'AI request failed.');
+                })
+                .finally(() => {
+                    generateDataSchemeBtn.disabled = false;
+                    generateDataSchemeBtn.textContent = oldText;
                 });
             });
         }
