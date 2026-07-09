@@ -366,7 +366,7 @@ try {
                         </div>
 
                         <div class="result-actions">
-                            <a class="open-link" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener">Open dashboard</a>
+                            <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">👁️</a>
                             <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" download title="Download dashboard" aria-label="Download dashboard">⬇️</a>
 
                             <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>

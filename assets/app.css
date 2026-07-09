@@ -702,6 +702,8 @@ input.cell-edit {
   align-items: center;
   flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .result-actions form,
@@ -712,19 +714,6 @@ input.cell-edit {
 
 .result-actions form {
   display: inline-flex;
-}
-
-.result-actions .open-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 12px;
-  border-radius: 8px;
-  background: var(--primary);
-  color: #fff;
-  text-decoration: none;
-  white-space: nowrap;
-  min-height: 36px;
 }
 
 .icon-btn {
