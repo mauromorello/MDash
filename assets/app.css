@@ -92,15 +92,21 @@ a:hover { text-decoration: underline; }
   border: 1px solid #334155;
   border-radius: 12px;
   padding: 10px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   z-index: 2000;
   box-shadow: 0 14px 36px rgba(2, 6, 23, 0.5);
 }
 
+.topbar-dropdown[hidden] {
+  display: none !important;
+}
+
 .topbar-dropdown a,
 .topbar-dropdown .topbar-logout-btn {
-  display: block;
+  display: block !important;
   width: 100%;
   background: #1e293b;
   color: #e2e8f0;
@@ -110,6 +116,7 @@ a:hover { text-decoration: underline; }
   text-align: left;
   font-size: 0.92rem;
   text-decoration: none;
+  white-space: normal;
 }
 
 .topbar-dropdown a:hover,
@@ -139,27 +146,8 @@ a:hover { text-decoration: underline; }
   font-size: 0.95rem;
 }
 
-.user-ribbon .actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.user-ribbon .actions a {
-  color: #fff;
-}
-
 .user-ribbon .brand-home {
   color: #fff;
-}
-
-.user-ribbon .actions button {
-  background: #e53935;
-  color: #fff;
-  border: none;
-  padding: 8px 14px;
-  border-radius: 4px;
-  cursor: pointer;
 }
 
 .topbar h1 {
@@ -371,65 +359,11 @@ button.secondary { background: #64748b; }
   padding: 0;
 }
 
-.main-home-actions {
-  margin-top: 24px;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-}
-
 .main-sections-grid {
   margin-top: 24px;
   display: grid;
   grid-template-columns: repeat(4, minmax(220px, 1fr));
   gap: 16px;
-}
-
-.workflow-visual {
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 18px;
-  background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 45%, #f8fafc 100%);
-}
-
-.workflow-visual h2 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.workflow-visual p {
-  margin: 8px 0 0;
-  color: #475569;
-}
-
-.workflow-steps {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr auto 1fr;
-  align-items: center;
-  gap: 10px;
-}
-
-.workflow-step {
-  background: #ffffff;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-
-.workflow-step strong {
-  display: block;
-  color: #1e3a8a;
-  margin-bottom: 4px;
-}
-
-.workflow-step span {
-  color: #475569;
-  font-size: 0.9rem;
-}
-
-.workflow-arrow {
-  color: #2563eb;
-  font-size: 1.3rem;
-  font-weight: 700;
 }
 
 .main-section-card {
@@ -522,18 +456,8 @@ button.secondary { background: #64748b; }
   .main-home-content {
     padding: 14px;
   }
-  .main-home-actions {
-    grid-template-columns: 1fr;
-  }
   .main-sections-grid {
     grid-template-columns: 1fr;
-  }
-  .workflow-steps {
-    grid-template-columns: 1fr;
-  }
-  .workflow-arrow {
-    transform: rotate(90deg);
-    justify-self: center;
   }
   .generated-preview-wrap,
   .generated-preview-frame {

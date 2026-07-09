@@ -55,28 +55,7 @@ function h($value) {
     <div class="main-home-content">
         <div class="page main-home-panel">
             <h1>Welcome</h1>
-            <p>Use the guided flow below, then open the section you need.</p>
-
-            <div class="workflow-visual">
-                <h2>Workflow Guide</h2>
-                <p>Configure your stack first, then build dashboards, then manage your dashboard pool.</p>
-                <div class="workflow-steps">
-                    <div class="workflow-step">
-                        <strong>1) Configuration</strong>
-                        <span>AI profile, template, and markup setup.</span>
-                    </div>
-                    <div class="workflow-arrow">&rarr;</div>
-                    <div class="workflow-step">
-                        <strong>2) Dashboard Build</strong>
-                        <span>Generate dashboard from data sources.</span>
-                    </div>
-                    <div class="workflow-arrow">&rarr;</div>
-                    <div class="workflow-step">
-                        <strong>3) Dashboard Pool</strong>
-                        <span>Review and manage created dashboards.</span>
-                    </div>
-                </div>
-            </div>
+            <p>Select a section to continue your workflow.</p>
 
             <div class="main-sections-grid">
                 <div class="main-section-card">
