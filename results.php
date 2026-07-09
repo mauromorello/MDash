@@ -97,6 +97,21 @@ function parseDataUrlImage(string $dataUrl): array {
     ];
 }
 
+function extractDashboardTitle(array $result): string {
+    $finalPrompt = (string)($result['final_prompt'] ?? '');
+    if ($finalPrompt !== '') {
+        if (preg_match('/\[Dashboard title\]\s*(.+?)(?:\n\[|$)/si', $finalPrompt, $matches)) {
+            $title = trim((string)($matches[1] ?? ''));
+            if ($title !== '') {
+                $firstLine = preg_split('/\R/', $title, 2);
+                return trim((string)($firstLine[0] ?? $title));
+            }
+        }
+    }
+
+    return 'Dashboard #' . (string)($result['id'] ?? '');
+}
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -330,9 +345,11 @@ try {
             <div class="results-grid">
                 <?php foreach ($results as $result): ?>
                     <div class="card result-card">
-                        <div class="result-owner">
-                            Owner: <?php echo h($result['owner_username'] ?: ('User #' . $result['id_owner'])); ?>
-                        </div>
+                        <?php $ownerLabel = (string)($result['owner_username'] ?: ('User #' . $result['id_owner'])); ?>
+                        <?php $aiLabel = (string)($result['ai_title'] ?: ('#' . $result['id_ai_db'])); ?>
+                        <?php $aiProviderModel = !empty($result['ai_provider']) || !empty($result['ai_model']) ? ' (' . h($result['ai_provider']) . ' / ' . h($result['ai_model']) . ')' : ''; ?>
+                        <?php $dashboardTitle = extractDashboardTitle($result); ?>
+
                         <div class="thumbnail-box">
                             <?php if (!empty($result['thumbnail_path']) && is_file(__DIR__ . DIRECTORY_SEPARATOR . $result['thumbnail_path'])): ?>
                                 <img src="<?php echo h($result['thumbnail_path']); ?>" alt="Thumbnail for result <?php echo h($result['id']); ?>">
@@ -341,15 +358,16 @@ try {
                             <?php endif; ?>
                         </div>
                         <div class="result-meta">
-                            <strong>Result #<?php echo h($result['id']); ?></strong>
-                            <span>Template: <?php echo h($result['template_title'] ?: ('#' . $result['id_template'])); ?></span>
-                            <span>AI: <?php echo h($result['ai_title'] ?: ('#' . $result['id_ai_db'])); ?><?php echo !empty($result['ai_provider']) || !empty($result['ai_model']) ? ' (' . h($result['ai_provider']) . ' / ' . h($result['ai_model']) . ')' : ''; ?></span>
+                            <strong><?php echo h($dashboardTitle); ?></strong>
+                            <span>Author: <?php echo h($ownerLabel); ?></span>
+                            <span>AI used: <?php echo h($aiLabel); ?><?php echo $aiProviderModel; ?></span>
                             <span>Visibility: <?php echo ((int)$result['is_public'] === 1) ? 'Public' : 'Private'; ?><?php echo ((int)$result['is_hidden'] === 1) ? ' / Hidden' : ''; ?></span>
                             <span>Saved path: <?php echo h($result['path']); ?></span>
                         </div>
 
                         <div class="result-actions">
                             <a class="open-link" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener">Open dashboard</a>
+                            <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" download title="Download dashboard" aria-label="Download dashboard">⬇️</a>
 
                             <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>
                                 <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste screenshot" aria-label="Paste screenshot">📋</button>
