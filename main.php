@@ -50,69 +50,80 @@ function h($value) {
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-    <div class="user-ribbon">
-        <div>
-            <a href="main.php" class="brand brand-home">Mdash</a>
-            <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
-        </div>
-        <div class="actions">
-            <?php if (!empty($user['is_admin'])): ?>
-                <a href="admin.php">Admin Console</a>
-            <?php endif; ?>
-            <button id="logoutBtn" type="button">Logout</button>
-        </div>
-    </div>
+    <?php include __DIR__ . '/topbar.php'; ?>
+
     <div class="main-home-content">
         <div class="page main-home-panel">
             <h1>Welcome</h1>
-            <p>Select a section to continue your workflow.</p>
+            <p>Use the guided flow below, then open the section you need.</p>
+
+            <div class="workflow-visual">
+                <h2>Workflow Guide</h2>
+                <p>Configure your stack first, then build dashboards, then manage your dashboard pool.</p>
+                <div class="workflow-steps">
+                    <div class="workflow-step">
+                        <strong>1) Configuration</strong>
+                        <span>AI profile, template, and markup setup.</span>
+                    </div>
+                    <div class="workflow-arrow">&rarr;</div>
+                    <div class="workflow-step">
+                        <strong>2) Dashboard Build</strong>
+                        <span>Generate dashboard from data sources.</span>
+                    </div>
+                    <div class="workflow-arrow">&rarr;</div>
+                    <div class="workflow-step">
+                        <strong>3) Dashboard Pool</strong>
+                        <span>Review and manage created dashboards.</span>
+                    </div>
+                </div>
+            </div>
 
             <div class="main-sections-grid">
                 <div class="main-section-card">
-                    <h2>Data Sources</h2>
+                    <h2>Config</h2>
                     <div class="main-action-item">
-                        <a href="upload.php" class="btn btn-primary">Upload Files</a>
-                        <p class="main-action-desc">Upload new CSV files and create source records.</p>
+                        <a href="ai_db.php" class="btn btn-secondary">AI</a>
+                        <p class="main-action-desc">Manage API keys, models, endpoints, and connection tests.</p>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="templates.php" class="btn btn-secondary">Template</a>
+                        <p class="main-action-desc">Create and maintain dashboard prompt templates.</p>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="makeup.php" class="btn btn-secondary">Markup</a>
+                        <p class="main-action-desc">Define visual style profiles for generated dashboards.</p>
+                    </div>
+                </div>
+
+                <div class="main-section-card">
+                    <h2>Data Source</h2>
+                    <div class="main-action-item">
+                        <a href="upload.php" class="btn btn-primary">Upload</a>
+                        <p class="main-action-desc">Upload new files and create data source records.</p>
                     </div>
                     <div class="main-action-item">
                         <a href="database_list.php" class="btn btn-secondary">Data Pool</a>
-                        <p class="main-action-desc">Browse and manage your available data sources.</p>
+                        <p class="main-action-desc">Browse and manage available data sources.</p>
                     </div>
                 </div>
 
                 <div class="main-section-card">
-                    <h2>Templates</h2>
+                    <h2>Dashboard</h2>
                     <div class="main-action-item">
-                        <a href="templates.php" class="btn btn-secondary">Template Library</a>
-                        <p class="main-action-desc">Create reusable prompts and publish shared templates.</p>
+                        <a href="dashboard_builder.php" class="btn btn-accent">Generate</a>
+                        <p class="main-action-desc">Build dashboards by combining config and data sources.</p>
                     </div>
                     <div class="main-action-item">
-                        <a href="makeup.php" class="btn btn-secondary">Makeup Library</a>
-                        <p class="main-action-desc">Create color and style profiles to guide dashboard visual output.</p>
-                    </div>
-                </div>
-
-                <div class="main-section-card">
-                    <h2>AI Profiles</h2>
-                    <div class="main-action-item">
-                        <a href="ai_db.php" class="btn btn-secondary">AI Library</a>
-                        <p class="main-action-desc">Store your personal AI keys, models, and endpoints for generation.</p>
+                        <a href="dashboards.php" class="btn btn-warning">Dash Pool</a>
+                        <p class="main-action-desc">Open your dashboard pool for review and edits.</p>
                     </div>
                 </div>
 
                 <div class="main-section-card">
-                    <h2>Dashboards</h2>
+                    <h2>Results</h2>
                     <div class="main-action-item">
-                        <a href="dashboard_builder.php" class="btn btn-accent">Generate Dashboard</a>
-                        <p class="main-action-desc">Build a dashboard by combining data, rules, and templates.</p>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="dashboards.php" class="btn btn-warning">Dashboard Pool</a>
-                        <p class="main-action-desc">Review, edit, and generate prompts from saved dashboards.</p>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="results.php" class="btn btn-secondary">Generated Results</a>
-                        <p class="main-action-desc">Open the list of generated dashboards and their saved outputs.</p>
+                        <a href="results.php" class="btn btn-secondary">Results Hub</a>
+                        <p class="main-action-desc">Review generated outputs, previews, and final artifacts.</p>
                     </div>
                 </div>
             </div>

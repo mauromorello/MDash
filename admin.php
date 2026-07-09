@@ -45,10 +45,11 @@ if ((int)$me['is_admin'] !== 1) {
     <script src="https://unpkg.com/tabulator-tables@5.4.4/dist/js/tabulator.min.js"></script>
 </head>
 <body>
+    <?php include __DIR__ . '/topbar.php'; ?>
+
     <div class="admin-page">
-    <div class="admin-header"><a href="main.php" class="brand-home">Mdash</a></div>
     <h2>Admin Console</h2>
-    <p>Welcome, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>) - <button id="logoutBtn">Logout</button></p>
+    <p>Welcome, <?php echo htmlspecialchars($me['username']); ?> (id <?php echo htmlspecialchars($me['id']); ?>).</p>
 
     <div id="user-management">
         <h3>User Management</h3>

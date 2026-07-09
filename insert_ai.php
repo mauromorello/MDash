@@ -131,16 +131,7 @@ try {
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-    <div class="user-ribbon">
-        <a href="main.php" class="brand brand-home">Mdash</a>
-        <div class="info">User: <?php echo h($user['username']); ?> | Login: <?php echo h($user['login_time'] ?? date('Y-m-d H:i:s')); ?></div>
-        <div class="actions">
-            <?php if (!empty($user['is_admin'])): ?>
-                <a href="admin.php">Admin Console</a>
-            <?php endif; ?>
-            <button id="logoutBtn" type="button">Logout</button>
-        </div>
-    </div>
+    <?php include __DIR__ . '/topbar.php'; ?>
 
     <div class="page">
         <div class="topbar">
