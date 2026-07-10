@@ -376,6 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     '',
                     '',
                     '',
+                    '',
                     (int)$user['id'],
                     0,
                     '',
