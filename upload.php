@@ -94,11 +94,32 @@ function readCsvSampleRows(string $absolutePath, int $maxRows = 10): array {
     ];
 }
 
-function buildDataSchemePrompt(array $uploadRecord, array $sample): string {
+function defaultDataDiscoveryPrompt(): string {
+    return "You are a senior data analyst.\n"
+        . "Analyze the CSV sample and produce a complete and practical data scheme.\n"
+        . "Return plain text only (no markdown fences).\n\n"
+        . "Required output sections:\n"
+        . "1) Dataset overview\n"
+        . "2) Fields\n"
+        . "   For each field include:\n"
+        . "   - Field\n"
+        . "   - Meaning\n"
+        . "   - Observed type (string/number/date/boolean/mixed)\n"
+        . "   - Example values (2-3)\n"
+        . "   - Data quality notes (missing values, anomalies, duplicates hints)\n"
+        . "3) Suggested checks\n"
+        . "   Add concrete validation checks that should be run on this dataset.\n\n"
+        . "Use the CSV sample below to infer structure and quality details.\n"
+        . "{{CSV_SAMPLE}}";
+}
+
+function buildDataSchemePrompt(array $uploadRecord, array $sample, string $title, string $longDescription, string $tableDescription, string $dataDiscoveryPrompt): string {
     $fileName = (string)($uploadRecord['filename'] ?? 'data.csv');
-    $description = trim((string)($uploadRecord['description'] ?? ''));
+    $description = trim($title);
     $tags = trim((string)($uploadRecord['tags'] ?? ''));
-    $longDescription = trim((string)($uploadRecord['long_description'] ?? ''));
+    $longDescription = trim($longDescription);
+    $tableDescription = trim($tableDescription);
+    $dataDiscoveryPrompt = trim($dataDiscoveryPrompt);
     $header = $sample['header'] ?? [];
     $rows = $sample['rows'] ?? [];
 
@@ -110,30 +131,27 @@ function buildDataSchemePrompt(array $uploadRecord, array $sample): string {
         $tableLines[] = implode(' | ', $row);
     }
 
-    return "You are a senior data analyst.\n"
-        . "Task: produce a detailed textual data schema for the uploaded CSV file.\n"
-        . "File name: {$fileName}\n"
-        . ($description !== '' ? "Short description: {$description}\n" : '')
-        . ($tags !== '' ? "Tags: {$tags}\n" : '')
-        . ($longDescription !== '' ? "Long description: {$longDescription}\n" : '')
-        . "\n"
-        . "How to read the sample:\n"
-        . "- First line is the header with field names.\n"
-        . "- Next lines are example records.\n"
-        . "- The sample includes only the first 10 data rows.\n"
-        . "\n"
-        . "Required output format (plain text, no markdown code fences):\n"
-        . "1) One short overview paragraph of the dataset purpose.\n"
-        . "2) A section named 'Fields' with one block per field in this exact style:\n"
-        . "   - Field: <name>\n"
-        . "   - Meaning: <business meaning>\n"
-        . "   - Observed type: <string/number/date/boolean/mixed>\n"
-        . "   - Example values: <2-3 values from sample>\n"
-        . "   - Quality notes: <missing values/format anomalies/duplicates hints>\n"
-        . "3) Final section 'Suggested checks' with validation checks to run for this dataset.\n"
-        . "\n"
-        . "CSV sample:\n"
-        . implode("\n", $tableLines);
+    $sampleText = implode("\n", $tableLines);
+    $promptTemplate = $dataDiscoveryPrompt !== '' ? $dataDiscoveryPrompt : defaultDataDiscoveryPrompt();
+    if (!str_contains($promptTemplate, '{{CSV_SAMPLE}}')) {
+        $promptTemplate .= "\n\nCSV sample:\n{{CSV_SAMPLE}}";
+    }
+
+    $context = "File name: {$fileName}\n";
+    if ($description !== '') {
+        $context .= "Title: {$description}\n";
+    }
+    if ($longDescription !== '') {
+        $context .= "Long description: {$longDescription}\n";
+    }
+    if ($tableDescription !== '') {
+        $context .= "Table description: {$tableDescription}\n";
+    }
+    if ($tags !== '') {
+        $context .= "Tags: {$tags}\n";
+    }
+
+    return trim($context) . "\n\n" . str_replace('{{CSV_SAMPLE}}', $sampleText, $promptTemplate);
 }
 
 function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
@@ -283,6 +301,7 @@ try {
             tags VARCHAR(255) NOT NULL,
             long_description TEXT NOT NULL,
             prompt_1 TEXT NOT NULL,
+            data_discovery_prompt TEXT NOT NULL,
             prompt_2 TEXT NOT NULL,
             id_owner INT NOT NULL,
             is_public TINYINT(1) NOT NULL DEFAULT 0,
@@ -304,6 +323,11 @@ try {
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN tags TEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN long_description MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN prompt_1 MEDIUMTEXT NOT NULL");
+        $hasDiscoveryPromptColumn = $pdo->query("SHOW COLUMNS FROM uploads LIKE 'data_discovery_prompt'")->fetch(PDO::FETCH_ASSOC);
+        if (!$hasDiscoveryPromptColumn) {
+            $pdo->exec("ALTER TABLE uploads ADD COLUMN data_discovery_prompt MEDIUMTEXT NOT NULL AFTER prompt_1");
+        }
+        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN data_discovery_prompt MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN prompt_2 MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_1 MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_2 MEDIUMTEXT NOT NULL");
@@ -342,7 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
                 $stmt = $pdo->prepare(
-                    'INSERT INTO uploads (path, filename, description, tags, long_description, prompt_1, prompt_2, id_owner, is_public, AI_1, AI_2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' 
+                    'INSERT INTO uploads (path, filename, description, tags, long_description, prompt_1, data_discovery_prompt, prompt_2, id_owner, is_public, AI_1, AI_2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' 
                 );
                 $stmt->execute([
                     '',
@@ -394,27 +418,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_metadata' && $pdo) {
         $uploadId = (int)($_POST['upload_id'] ?? 0);
         $prompt1 = trim((string)($_POST['prompt_1'] ?? ''));
+        $dataDiscoveryPrompt = trim((string)($_POST['data_discovery_prompt'] ?? ''));
         $prompt2 = trim((string)($_POST['prompt_2'] ?? ''));
         $description = trim((string)($_POST['description'] ?? ''));
-        $tags = trim((string)($_POST['tags'] ?? ''));
         $longDescription = trim((string)($_POST['long_description'] ?? ''));
-        $isPublic = (int)($_POST['is_public'] ?? 0);
+        $isPublic = isset($_POST['is_public']) ? 1 : 0;
+        $ai1 = trim((string)($_POST['AI_1'] ?? ''));
+        $ai2 = trim((string)($_POST['AI_2'] ?? ''));
+        $tags = '';
 
-        if (utf8Length($description) > 16000000 || utf8Length($tags) > 65000 || utf8Length($longDescription) > 16000000 || utf8Length($prompt1) > 16000000 || utf8Length($prompt2) > 16000000) {
+        if ($uploadId > 0) {
+            $existingStmt = $pdo->prepare('SELECT tags FROM uploads WHERE id = ? AND id_owner = ? LIMIT 1');
+            $existingStmt->execute([$uploadId, (int)$user['id']]);
+            $existing = $existingStmt->fetch();
+            if ($existing) {
+                $tags = trim((string)($existing['tags'] ?? ''));
+            }
+        }
+
+        if (utf8Length($description) > 16000000 || utf8Length($tags) > 65000 || utf8Length($longDescription) > 16000000 || utf8Length($prompt1) > 16000000 || utf8Length($dataDiscoveryPrompt) > 16000000 || utf8Length($prompt2) > 16000000) {
             $message = 'Some fields are too long. Reduce text and try again.';
         }
 
         if ($message === '' && $uploadId > 0) {
             try {
                 $stmt = $pdo->prepare(
-                    'UPDATE uploads SET description = ?, tags = ?, long_description = ?, prompt_1 = ?, prompt_2 = ?, id_owner = ?, is_public = ? WHERE id = ? AND id_owner = ?'
+                    'UPDATE uploads SET description = ?, tags = ?, long_description = ?, prompt_1 = ?, data_discovery_prompt = ?, prompt_2 = ?, AI_1 = ?, AI_2 = ?, id_owner = ?, is_public = ? WHERE id = ? AND id_owner = ?'
                 );
                 $stmt->execute([
                     $description,
                     $tags,
                     $longDescription,
                     $prompt1,
+                    $dataDiscoveryPrompt,
                     $prompt2,
+                    $ai1,
+                    $ai2,
                     (int)$user['id'],
                     $isPublic,
                     $uploadId,
@@ -470,7 +509,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Unable to read CSV header from uploaded file.');
             }
 
-            $prompt = buildDataSchemePrompt($uploadRecord, $sample);
+            $title = trim((string)($_POST['description'] ?? (string)($uploadRecord['description'] ?? '')));
+            $longDescription = trim((string)($_POST['long_description'] ?? (string)($uploadRecord['long_description'] ?? '')));
+            $tableDescription = trim((string)($_POST['prompt_1'] ?? (string)($uploadRecord['prompt_1'] ?? '')));
+            $dataDiscoveryPrompt = trim((string)($_POST['data_discovery_prompt'] ?? (string)($uploadRecord['data_discovery_prompt'] ?? '')));
+
+            $prompt = buildDataSchemePrompt($uploadRecord, $sample, $title, $longDescription, $tableDescription, $dataDiscoveryPrompt);
             $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
             sendAiJson(true, 'AI schema generated successfully.', $generatedText);
         } catch (Throwable $e) {
@@ -538,13 +582,8 @@ if ($record) {
                     <input type="hidden" name="upload_id" value="<?php echo h($record['id']); ?>">
 
                     <div class="field">
-                        <label for="description">Short description</label>
-                        <input type="text" id="description" name="description" value="<?php echo h($record['description'] ?? ''); ?>" placeholder="Short summary of file content">
-                    </div>
-
-                    <div class="field">
-                        <label for="tags">Tag</label>
-                        <input type="text" id="tags" name="tags" value="<?php echo h($record['tags'] ?? ''); ?>" placeholder="e.g. customers, orders, reports">
+                        <label for="description">Title</label>
+                        <input type="text" id="description" name="description" value="<?php echo h($record['description'] ?? ''); ?>" placeholder="Dataset title">
                     </div>
 
                     <div class="field">
@@ -552,32 +591,64 @@ if ($record) {
                         <textarea id="long_description" name="long_description" placeholder="Additional details about the file and its fields"><?php echo h($record['long_description'] ?? ''); ?></textarea>
                     </div>
 
-                    <div class="row">
-                        <div class="field">
-                            <label for="prompt_1">Prompt 1</label>
-                            <textarea id="prompt_1" name="prompt_1" placeholder="Describe in plain language what the table contains"><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
-                        </div>
-                        <div class="field">
-                            <label for="prompt_2">Data scheme</label>
-                            <textarea id="prompt_2" name="prompt_2" placeholder="Detailed description of every field and validation hints"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
-                            <div class="inline-actions" style="margin-top:8px;">
-                                <select id="id_ai_db" name="id_ai_db">
-                                    <option value="">Select AI profile</option>
-                                    <?php foreach ($aiProfiles as $profile): ?>
-                                        <option value="<?php echo h((int)$profile['id']); ?>">#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?> [<?php echo h((string)$profile['provider']); ?> / <?php echo h((string)$profile['model']); ?>]</option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button type="button" class="secondary" id="generateDataSchemeBtn">Read with AI (first 10 rows)</button>
-                            </div>
+                    <div class="field">
+                        <label for="prompt_1">Table description</label>
+                        <textarea id="prompt_1" name="prompt_1" placeholder="Describe the table business meaning and expected structure"><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label for="data_discovery_prompt">Data discovery prompt</label>
+                        <textarea id="data_discovery_prompt" name="data_discovery_prompt" placeholder="Prompt used to guide AI schema analysis"><?php
+                            $savedDiscoveryPrompt = trim((string)($record['data_discovery_prompt'] ?? ''));
+                            echo h($savedDiscoveryPrompt !== '' ? $savedDiscoveryPrompt : defaultDataDiscoveryPrompt());
+                        ?></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label for="id_ai_db">AI profile for analysis</label>
+                        <select id="id_ai_db" name="id_ai_db">
+                            <option value="">Select AI profile</option>
+                            <?php foreach ($aiProfiles as $profile): ?>
+                                <option value="<?php echo h((int)$profile['id']); ?>">#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?> [<?php echo h((string)$profile['provider']); ?> / <?php echo h((string)$profile['model']); ?>]</option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="inline-actions" style="margin-top:8px;">
+                            <button type="button" class="secondary" id="generateDataSchemeBtn">Generate data scheme with AI (first 10 rows)</button>
                         </div>
                     </div>
 
                     <div class="field">
-                        <label for="is_public">Visibility</label>
-                        <select id="is_public" name="is_public">
-                            <option value="0"<?php echo ((int)($record['is_public'] ?? 0) === 0) ? ' selected' : ''; ?>>Private</option>
-                            <option value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' selected' : ''; ?>>Public</option>
+                        <label for="prompt_2">Data scheme</label>
+                        <textarea id="prompt_2" name="prompt_2" placeholder="Detailed schema generated by AI"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label for="AI_1">Default AI profile 1</label>
+                        <select id="AI_1" name="AI_1">
+                            <option value="">None</option>
+                            <?php foreach ($aiProfiles as $profile): ?>
+                                <?php $profileId = (string)(int)$profile['id']; ?>
+                                <option value="<?php echo h($profileId); ?>"<?php echo ((string)($record['AI_1'] ?? '') === $profileId) ? ' selected' : ''; ?>>#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?></option>
+                            <?php endforeach; ?>
                         </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="AI_2">Default AI profile 2</label>
+                        <select id="AI_2" name="AI_2">
+                            <option value="">None</option>
+                            <?php foreach ($aiProfiles as $profile): ?>
+                                <?php $profileId = (string)(int)$profile['id']; ?>
+                                <option value="<?php echo h($profileId); ?>"<?php echo ((string)($record['AI_2'] ?? '') === $profileId) ? ' selected' : ''; ?>>#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="field" style="margin-top:6px;">
+                        <label style="font-weight:600; display:flex; gap:8px; align-items:center;">
+                            <input type="checkbox" name="is_public" value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' checked' : ''; ?>>
+                            Public dataset
+                        </label>
                     </div>
 
                     <button type="submit">Save and return home</button>
@@ -672,6 +743,10 @@ if ($record) {
                 const uploadIdInput = document.querySelector('input[name="upload_id"]');
                 const aiSelect = document.getElementById('id_ai_db');
                 const prompt2Field = document.getElementById('prompt_2');
+                const descriptionField = document.getElementById('description');
+                const longDescriptionField = document.getElementById('long_description');
+                const prompt1Field = document.getElementById('prompt_1');
+                const discoveryPromptField = document.getElementById('data_discovery_prompt');
 
                 if (!uploadIdInput || !uploadIdInput.value) {
                     alert('Upload record not found.');
@@ -694,6 +769,10 @@ if ($record) {
                     action: 'generate_prompt2_ai',
                     upload_id: uploadIdInput.value,
                     id_ai_db: aiSelect.value,
+                    description: descriptionField ? descriptionField.value : '',
+                    long_description: longDescriptionField ? longDescriptionField.value : '',
+                    prompt_1: prompt1Field ? prompt1Field.value : '',
+                    data_discovery_prompt: discoveryPromptField ? discoveryPromptField.value : '',
                 });
 
                 fetch('upload.php', {
