@@ -888,7 +888,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
     <div id="generationOverlay" class="generation-overlay" aria-hidden="true">
         <canvas id="generationCanvas"></canvas>
         <div class="generation-overlay-content">
-            <h2 class="generation-overlay-title">Generating Futuristic Dashboard</h2>
+            <h2 class="generation-overlay-title">Dashboard generation in progress</h2>
             <p class="generation-overlay-subtitle">Running generation pipeline, please wait...</p>
             <div class="generation-overlay-log-panel">
                 <ul id="generationOverlayLog" class="generation-overlay-log">

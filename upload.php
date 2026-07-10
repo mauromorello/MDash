@@ -66,6 +66,28 @@ function readCsvSampleRows(string $absolutePath, int $maxRows = 10): array {
         throw new RuntimeException('Uploaded file is not readable.');
     }
 
+    $rawLines = [];
+    $stream = fopen($absolutePath, 'rb');
+    if ($stream !== false) {
+        while (!feof($stream) && count($rawLines) < ($maxRows + 1)) {
+            $line = fgets($stream);
+            if ($line === false) {
+                break;
+            }
+
+            $line = rtrim($line, "\r\n");
+            if (count($rawLines) === 0) {
+                $line = preg_replace('/^\xEF\xBB\xBF/', '', $line) ?? $line;
+            }
+            if ($line === '') {
+                continue;
+            }
+
+            $rawLines[] = $line;
+        }
+        fclose($stream);
+    }
+
     $rows = [];
     $header = [];
 
@@ -91,6 +113,7 @@ function readCsvSampleRows(string $absolutePath, int $maxRows = 10): array {
     return [
         'header' => $header,
         'rows' => $rows,
+        'raw_lines' => $rawLines,
     ];
 }
 
@@ -120,18 +143,8 @@ function buildDataSchemePrompt(array $uploadRecord, array $sample, string $title
     $longDescription = trim($longDescription);
     $tableDescription = trim($tableDescription);
     $dataDiscoveryPrompt = trim($dataDiscoveryPrompt);
-    $header = $sample['header'] ?? [];
-    $rows = $sample['rows'] ?? [];
-
-    $tableLines = [];
-    if (!empty($header)) {
-        $tableLines[] = implode(' | ', $header);
-    }
-    foreach ($rows as $row) {
-        $tableLines[] = implode(' | ', $row);
-    }
-
-    $sampleText = implode("\n", $tableLines);
+    $rawLines = $sample['raw_lines'] ?? [];
+    $sampleText = implode("\n", $rawLines);
     $promptTemplate = $dataDiscoveryPrompt !== '' ? $dataDiscoveryPrompt : defaultDataDiscoveryPrompt();
     if (!str_contains($promptTemplate, '{{CSV_SAMPLE}}')) {
         $promptTemplate .= "\n\nCSV sample:\n{{CSV_SAMPLE}}";
@@ -356,9 +369,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (empty($_FILES['file']['name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
             $message = 'Select a valid file to upload.';
         } else {
-            $baseName = pathinfo($_FILES['file']['name'], PATHINFO_FILENAME);
-            $safeBaseName = preg_replace('/[^A-Za-z0-9._-]/', '_', $baseName) ?: 'file';
-            $fileName = $safeBaseName . '.csv';
+            $originalName = (string)($_FILES['file']['name'] ?? '');
+            $normalizedName = str_replace('\\', '/', str_replace("\0", '', $originalName));
+            $fileName = basename($normalizedName);
+            if ($fileName === '' || $fileName === '.' || $fileName === '..') {
+                $fileName = 'file';
+            }
             $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0777, true);
@@ -506,8 +522,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
             $sample = readCsvSampleRows($absolutePath, 10);
-            if (empty($sample['header'])) {
-                throw new RuntimeException('Unable to read CSV header from uploaded file.');
+            if (empty($sample['raw_lines'])) {
+                throw new RuntimeException('Unable to read sample rows from uploaded file.');
             }
 
             $title = trim((string)($_POST['description'] ?? (string)($uploadRecord['description'] ?? '')));
@@ -562,7 +578,7 @@ if ($record) {
                     <div class="field">
                         <label for="file">Select file</label>
                         <input type="file" id="file" name="file" required>
-                        <div class="hint">The file will be stored in uploads/id/filename.csv.</div>
+                        <div class="hint">The file will be stored in uploads/id/original_filename.ext.</div>
                     </div>
                     <div id="progressBox" class="progress-box">
                         <div id="progressLabel">Upload in progress...</div>
