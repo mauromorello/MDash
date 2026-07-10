@@ -359,7 +359,7 @@ button.secondary { background: #64748b; }
 .main-sections-grid {
   margin-top: 24px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 16px;
 }
 
@@ -394,6 +394,70 @@ button.secondary { background: #64748b; }
 .main-action-desc {
   margin: 0;
   color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.main-ready-section {
+  margin-top: 20px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.main-ready-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.main-ready-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #1e3a8a;
+}
+
+.main-ready-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.main-ready-card {
+  display: block;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.main-ready-card:hover {
+  text-decoration: none;
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
+}
+
+.main-ready-thumb-wrap {
+  aspect-ratio: 16 / 9;
+  background: #e5e7eb;
+}
+
+.main-ready-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.main-ready-card h3 {
+  margin: 0;
+  padding: 10px;
   font-size: 0.9rem;
   line-height: 1.35;
 }
@@ -456,6 +520,13 @@ button.secondary { background: #64748b; }
   .main-sections-grid {
     grid-template-columns: 1fr;
   }
+  .main-ready-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .main-ready-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
   .generated-preview-wrap,
   .generated-preview-frame {
     min-height: 420px;
@@ -464,7 +535,19 @@ button.secondary { background: #64748b; }
 
 @media (max-width: 1100px) and (min-width: 701px) {
   .main-sections-grid {
+    grid-template-columns: repeat(3, minmax(200px, 1fr));
+  }
+  .main-ready-grid {
+    grid-template-columns: repeat(4, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 900px) and (min-width: 701px) {
+  .main-sections-grid {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+  .main-ready-grid {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
   }
 }
 

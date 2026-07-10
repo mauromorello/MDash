@@ -40,6 +40,65 @@ if (!$user) {
 function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
+
+function extractDashboardTitle(array $result): string {
+    $finalPrompt = (string)($result['final_prompt'] ?? '');
+    if ($finalPrompt !== '' && preg_match('/\[Dashboard title\]\s*(.+?)(?:\n\[|$)/si', $finalPrompt, $matches)) {
+        $title = trim((string)($matches[1] ?? ''));
+        if ($title !== '') {
+            $firstLine = preg_split('/\R/', $title, 2);
+            return trim((string)($firstLine[0] ?? $title));
+        }
+    }
+
+    return 'Dashboard #' . (string)($result['id'] ?? '');
+}
+
+$dbHost = getenv('DB_HOST') ?: 'localhost';
+$dbName = getenv('DB_NAME') ?: 'mdash';
+$dbUser = getenv('DB_USER') ?: 'root';
+$dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
+
+$readyDashboards = [];
+
+try {
+    $pdo = new PDO(
+        "mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4",
+        $dbUser,
+        $dbPass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
+    );
+
+    $stmt = $pdo->prepare(
+        'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.thumbnail_path, r.final_prompt
+         FROM results r
+         WHERE ((r.id_owner = :user_id AND r.is_hidden = 0) OR (r.is_public = 1 AND r.is_hidden = 0))
+           AND COALESCE(TRIM(r.thumbnail_path), "") <> ""
+         ORDER BY r.id DESC
+         LIMIT 80'
+    );
+    $stmt->execute(['user_id' => (int)$user['id']]);
+    $rows = $stmt->fetchAll();
+
+    foreach ($rows as $row) {
+        $thumbnailPath = trim((string)($row['thumbnail_path'] ?? ''));
+        $absoluteThumb = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $thumbnailPath);
+        if (!is_file($absoluteThumb)) {
+            continue;
+        }
+
+        $readyDashboards[] = [
+            'id' => (int)$row['id'],
+            'title' => extractDashboardTitle($row),
+            'thumbnail_path' => $thumbnailPath,
+        ];
+    }
+} catch (Throwable $e) {
+    $readyDashboards = [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -97,15 +156,29 @@ function h($value) {
                         <p class="main-action-desc">Open your dashboard pool for review and edits.</p>
                     </div>
                 </div>
-
-                <div class="main-section-card">
-                    <h2>Results</h2>
-                    <div class="main-action-item">
-                        <a href="results.php" class="btn btn-secondary">Results Hub</a>
-                        <p class="main-action-desc">Review generated outputs, previews, and final artifacts.</p>
-                    </div>
-                </div>
             </div>
+
+            <section class="main-ready-section">
+                <div class="main-ready-header">
+                    <h2>Dashboard Hub</h2>
+                    <a href="results.php" class="btn btn-secondary">Dashboard Hub</a>
+                </div>
+
+                <?php if (empty($readyDashboards)): ?>
+                    <p class="main-action-desc">No ready dashboards available with thumbnail yet.</p>
+                <?php else: ?>
+                    <div class="main-ready-grid">
+                        <?php foreach ($readyDashboards as $dashboard): ?>
+                            <a class="main-ready-card" href="results.php">
+                                <div class="main-ready-thumb-wrap">
+                                    <img src="<?php echo h($dashboard['thumbnail_path']); ?>" alt="Thumbnail dashboard <?php echo h((int)$dashboard['id']); ?>" class="main-ready-thumb">
+                                </div>
+                                <h3><?php echo h($dashboard['title']); ?></h3>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </section>
         </div>
     </div>
 
