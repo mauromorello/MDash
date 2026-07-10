@@ -32,6 +32,29 @@ function pdoConnect($host, $user, $pass, $db = null){
     return new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 }
 
+function sanitizeIdentifier(string $name): string {
+    return str_replace('`', '', $name);
+}
+
+function tableExists(PDO $pdo, string $table): bool {
+    $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+    $stmt->execute([$table]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function getPrimaryKeys(PDO $pdo, string $table): array {
+    $safeTable = sanitizeIdentifier($table);
+    $stmt = $pdo->query("SHOW COLUMNS FROM `{$safeTable}`");
+    $columns = $stmt->fetchAll();
+    $primaryKeys = [];
+    foreach ($columns as $column) {
+        if (($column['Key'] ?? '') === 'PRI') {
+            $primaryKeys[] = (string)$column['Field'];
+        }
+    }
+    return $primaryKeys;
+}
+
 function ensureTemplatesTable(PDO $pdo): void {
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS templates (
@@ -130,7 +153,20 @@ if (!$user) {
     respond(false, 'Non autenticato.', ['code' => 401]);
 }
 
-$adminOnlyActions = ['list_users','create_user','update_user','delete_user'];
+$adminOnlyActions = [
+    'list_users',
+    'create_user',
+    'update_user',
+    'delete_user',
+    'list_tables',
+    'get_schema',
+    'get_rows',
+    'get_rows_paginated',
+    'update_row',
+    'update_row_dynamic',
+    'create_row_dynamic',
+    'delete_row_dynamic',
+];
 if (in_array($action, $adminOnlyActions, true) && empty($user['is_admin'])) {
     respond(false, 'Non autorizzato.', ['code' => 403]);
 }
@@ -341,7 +377,10 @@ if ($action === 'delete_user') {
 if ($action === 'get_schema') {
     $table = $_POST['table'] ?? '';
     if (!$table) respond(false, 'Nome tabella mancante.');
-    $stmt = $pdo->prepare("SHOW COLUMNS FROM `" . str_replace('`','',$table) . "`");
+    if (!tableExists($pdo, $table)) {
+        respond(false, 'Tabella non trovata.');
+    }
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM `" . sanitizeIdentifier($table) . "`");
     $stmt->execute();
     $cols = $stmt->fetchAll();
     respond(true, 'Schema ottenuto.', ['columns'=>$cols]);
@@ -351,11 +390,46 @@ if ($action === 'get_rows') {
     $table = $_POST['table'] ?? '';
     $limit = (int)($_POST['limit'] ?? 100);
     if (!$table) respond(false, 'Nome tabella mancante.');
-    $stmt = $pdo->prepare("SELECT * FROM `" . str_replace('`','',$table) . "` LIMIT ?");
+    $safeTable = sanitizeIdentifier($table);
+    $stmt = $pdo->prepare("SELECT * FROM `{$safeTable}` LIMIT ?");
     $stmt->bindValue(1, $limit, PDO::PARAM_INT);
     $stmt->execute();
     $rows = $stmt->fetchAll();
     respond(true, 'Record ottenuti.', ['rows'=>$rows]);
+}
+
+if ($action === 'get_rows_paginated') {
+    $table = trim((string)($_POST['table'] ?? ''));
+    $page = max(1, (int)($_POST['page'] ?? 1));
+    $pageSize = max(1, min(500, (int)($_POST['page_size'] ?? 25)));
+
+    if ($table === '') {
+        respond(false, 'Nome tabella mancante.');
+    }
+    if (!tableExists($pdo, $table)) {
+        respond(false, 'Tabella non trovata.');
+    }
+
+    $safeTable = sanitizeIdentifier($table);
+    $offset = ($page - 1) * $pageSize;
+
+    $countStmt = $pdo->query("SELECT COUNT(*) AS total_rows FROM `{$safeTable}`");
+    $totalRows = (int)($countStmt->fetch()['total_rows'] ?? 0);
+
+    $rowsStmt = $pdo->prepare("SELECT * FROM `{$safeTable}` LIMIT :limit OFFSET :offset");
+    $rowsStmt->bindValue(':limit', $pageSize, PDO::PARAM_INT);
+    $rowsStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $rowsStmt->execute();
+    $rows = $rowsStmt->fetchAll();
+
+    $lastPage = max(1, (int)ceil($totalRows / $pageSize));
+    respond(true, 'Record paginati ottenuti.', [
+        'rows' => $rows,
+        'page' => $page,
+        'page_size' => $pageSize,
+        'total_rows' => $totalRows,
+        'last_page' => $lastPage,
+    ]);
 }
 
 if ($action === 'update_row') {
@@ -375,17 +449,205 @@ if ($action === 'update_row') {
     $sets = [];
     $params = [];
     foreach ($data as $k=>$v) {
-        $sets[] = "`" . str_replace('`','',$k) . "` = ?";
+        $sets[] = "`" . sanitizeIdentifier((string)$k . "") . "` = ?";
         $params[] = $v;
     }
     $params[] = $id;
-    $sql = "UPDATE `" . str_replace('`','',$table) . "` SET " . implode(', ', $sets) . " WHERE id = ?";
+    $sql = "UPDATE `" . sanitizeIdentifier($table) . "` SET " . implode(', ', $sets) . " WHERE id = ?";
     $stmt = $pdo->prepare($sql);
     try {
         $stmt->execute($params);
         respond(true, 'Record aggiornato.');
     } catch (Exception $e) {
         respond(false, 'Errore aggiornamento: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'update_row_dynamic') {
+    $table = trim((string)($_POST['table'] ?? ''));
+    $pk = $_POST['pk'] ?? null;
+    $changes = $_POST['changes'] ?? null;
+
+    if ($table === '' || $pk === null || $changes === null) {
+        respond(false, 'Parametri mancanti.');
+    }
+
+    if (is_string($pk)) {
+        $pk = json_decode($pk, true);
+    }
+    if (is_string($changes)) {
+        $changes = json_decode($changes, true);
+    }
+
+    if (!is_array($pk) || empty($pk)) {
+        respond(false, 'Primary key non valida.');
+    }
+    if (!is_array($changes) || empty($changes)) {
+        respond(false, 'Nessun campo da aggiornare.');
+    }
+    if (!tableExists($pdo, $table)) {
+        respond(false, 'Tabella non trovata.');
+    }
+
+    $primaryKeys = getPrimaryKeys($pdo, $table);
+    if (empty($primaryKeys)) {
+        respond(false, 'La tabella non ha una primary key.');
+    }
+    foreach ($primaryKeys as $keyField) {
+        if (!array_key_exists($keyField, $pk)) {
+            respond(false, 'Primary key incompleta. Campo mancante: ' . $keyField);
+        }
+    }
+
+    foreach ($primaryKeys as $keyField) {
+        if (array_key_exists($keyField, $changes)) {
+            unset($changes[$keyField]);
+        }
+    }
+    if (empty($changes)) {
+        respond(true, 'Nessuna modifica applicabile.');
+    }
+
+    $safeTable = sanitizeIdentifier($table);
+    $setParts = [];
+    $params = [];
+    foreach ($changes as $field => $value) {
+        $setParts[] = "`" . sanitizeIdentifier((string)$field) . "` = ?";
+        $params[] = $value;
+    }
+
+    $whereParts = [];
+    foreach ($primaryKeys as $keyField) {
+        $whereParts[] = "`" . sanitizeIdentifier($keyField) . "` = ?";
+        $params[] = $pk[$keyField];
+    }
+
+    $sql = "UPDATE `{$safeTable}` SET " . implode(', ', $setParts) . " WHERE " . implode(' AND ', $whereParts) . " LIMIT 1";
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        respond(true, 'Record aggiornato.');
+    } catch (Exception $e) {
+        respond(false, 'Errore aggiornamento dinamico: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'create_row_dynamic') {
+    $table = trim((string)($_POST['table'] ?? ''));
+    $row = $_POST['row'] ?? null;
+
+    if ($table === '' || $row === null) {
+        respond(false, 'Parametri mancanti.');
+    }
+
+    if (is_string($row)) {
+        $row = json_decode($row, true);
+    }
+
+    if (!is_array($row) || empty($row)) {
+        respond(false, 'Dati riga non validi.');
+    }
+    if (!tableExists($pdo, $table)) {
+        respond(false, 'Tabella non trovata.');
+    }
+
+    $safeTable = sanitizeIdentifier($table);
+    $schemaStmt = $pdo->query("SHOW COLUMNS FROM `{$safeTable}`");
+    $schemaRows = $schemaStmt->fetchAll();
+    $allowedColumns = [];
+    foreach ($schemaRows as $schemaCol) {
+        $field = (string)($schemaCol['Field'] ?? '');
+        $extra = strtolower((string)($schemaCol['Extra'] ?? ''));
+        if ($field === '' || str_contains($extra, 'auto_increment')) {
+            continue;
+        }
+        $allowedColumns[$field] = [
+            'null' => (string)($schemaCol['Null'] ?? 'NO'),
+        ];
+    }
+
+    $insertCols = [];
+    $insertVals = [];
+    foreach ($row as $field => $value) {
+        $fieldName = (string)$field;
+        if (!array_key_exists($fieldName, $allowedColumns)) {
+            continue;
+        }
+
+        $normalizedValue = $value;
+        if ($normalizedValue === '' && strtoupper((string)$allowedColumns[$fieldName]['null']) === 'YES') {
+            $normalizedValue = null;
+        }
+
+        $insertCols[] = "`" . sanitizeIdentifier($fieldName) . "`";
+        $insertVals[] = $normalizedValue;
+    }
+
+    if (empty($insertCols)) {
+        respond(false, 'Nessun campo valido da inserire.');
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
+    $sql = "INSERT INTO `{$safeTable}` (" . implode(', ', $insertCols) . ") VALUES ({$placeholders})";
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($insertVals);
+        respond(true, 'Record creato.', ['id' => (int)$pdo->lastInsertId()]);
+    } catch (Exception $e) {
+        respond(false, 'Errore creazione record: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'delete_row_dynamic') {
+    $table = trim((string)($_POST['table'] ?? ''));
+    $pk = $_POST['pk'] ?? null;
+
+    if ($table === '' || $pk === null) {
+        respond(false, 'Parametri mancanti.');
+    }
+
+    if (is_string($pk)) {
+        $pk = json_decode($pk, true);
+    }
+
+    if (!is_array($pk) || empty($pk)) {
+        respond(false, 'Primary key non valida.');
+    }
+    if (!tableExists($pdo, $table)) {
+        respond(false, 'Tabella non trovata.');
+    }
+
+    $primaryKeys = getPrimaryKeys($pdo, $table);
+    if (empty($primaryKeys)) {
+        respond(false, 'La tabella non ha una primary key.');
+    }
+    foreach ($primaryKeys as $keyField) {
+        if (!array_key_exists($keyField, $pk)) {
+            respond(false, 'Primary key incompleta. Campo mancante: ' . $keyField);
+        }
+    }
+
+    $safeTable = sanitizeIdentifier($table);
+    $whereParts = [];
+    $params = [];
+    foreach ($primaryKeys as $keyField) {
+        $whereParts[] = "`" . sanitizeIdentifier($keyField) . "` = ?";
+        $params[] = $pk[$keyField];
+    }
+
+    $sql = "DELETE FROM `{$safeTable}` WHERE " . implode(' AND ', $whereParts) . " LIMIT 1";
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        if ($stmt->rowCount() < 1) {
+            respond(false, 'Nessun record eliminato.');
+        }
+        respond(true, 'Record eliminato.');
+    } catch (Exception $e) {
+        respond(false, 'Errore eliminazione record: ' . $e->getMessage());
     }
 }
 
