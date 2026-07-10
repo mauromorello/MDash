@@ -617,6 +617,68 @@ button.secondary { background: #64748b; }
   margin-top: 12px;
 }
 
+.login-ribbon {
+  margin-bottom: 0;
+}
+
+.login-page {
+  min-height: calc(100vh - 68px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.login-panel {
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 10px 35px rgba(15, 23, 42, 0.08);
+}
+
+.login-panel h1 {
+  margin: 0 0 14px;
+  font-size: 1.4rem;
+}
+
+.login-logo-box {
+  width: 100%;
+  max-width: 400px;
+  height: 300px;
+  margin: 0 auto 16px;
+  border: 1px dashed #94a3b8;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #64748b;
+  text-align: center;
+  padding: 8px;
+}
+
+.login-logo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.login-form {
+  margin-top: 6px;
+}
+
+.login-form .field {
+  margin-bottom: 10px;
+}
+
+.login-form button {
+  width: 100%;
+}
+
 .admin-page {
   max-width: 1200px;
   margin: 0 auto;

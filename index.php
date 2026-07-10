@@ -15,26 +15,45 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-    <a href="main.php" class="brand-home">Mdash</a>
-    <div class="login-wrap">
-        <h2>Sign in</h2>
-        <form id="loginForm">
-            <div>
-                <label for="user">User:</label>
-                <input type="text" id="user" name="user" required>
-            </div>
-            <div>
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <br>
-            <button type="submit">Login</button>
-        </form>
+    <header class="user-ribbon login-ribbon">
+        <div class="brand">MDash</div>
+    </header>
 
-        <div id="message" class="login-message"></div>
-    </div>
+    <main class="login-page">
+        <section class="login-panel" aria-labelledby="loginTitle">
+            <h1 id="loginTitle">Sign in</h1>
+
+            <div class="login-logo-box" aria-label="Logo placeholder 400 by 300">
+                <img src="assets/logo.png" alt="MDash logo" width="400" height="300">
+            </div>
+
+            <form id="loginForm" class="login-form">
+                <div class="field">
+                    <label for="user">Login</label>
+                    <input type="text" id="user" name="user" required>
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit">Login</button>
+            </form>
+
+            <div id="message" class="login-message" aria-live="polite"></div>
+        </section>
+    </main>
 
     <script>
+        const logoImg = document.querySelector('.login-logo-box img');
+        if (logoImg) {
+            logoImg.addEventListener('error', function () {
+                const box = logoImg.parentElement;
+                if (box) {
+                    box.innerHTML = '<span>assets/logo.png (400x300)</span>';
+                }
+            });
+        }
+
         document.getElementById('loginForm').addEventListener('submit', function (e) {
             e.preventDefault();
 
