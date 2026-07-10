@@ -72,8 +72,8 @@ try {
         ]
     );
 
-    $stmt = $pdo->prepare(
-        'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.thumbnail_path, r.final_prompt
+        $stmt = $pdo->prepare(
+                'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.path, r.thumbnail_path, r.final_prompt
          FROM results r
          WHERE ((r.id_owner = :user_id AND r.is_hidden = 0) OR (r.is_public = 1 AND r.is_hidden = 0))
            AND COALESCE(TRIM(r.thumbnail_path), "") <> ""
@@ -92,7 +92,9 @@ try {
 
         $readyDashboards[] = [
             'id' => (int)$row['id'],
+            'id_owner' => (int)$row['id_owner'],
             'title' => extractDashboardTitle($row),
+            'path' => (string)($row['path'] ?? ''),
             'thumbnail_path' => $thumbnailPath,
         ];
     }
@@ -169,12 +171,17 @@ try {
                 <?php else: ?>
                     <div class="main-ready-grid">
                         <?php foreach ($readyDashboards as $dashboard): ?>
-                            <a class="main-ready-card" href="results.php">
+                            <div class="main-ready-card">
                                 <div class="main-ready-thumb-wrap">
-                                    <img src="<?php echo h($dashboard['thumbnail_path']); ?>" alt="Thumbnail dashboard <?php echo h((int)$dashboard['id']); ?>" class="main-ready-thumb">
+                                    <a class="main-ready-thumb-link" href="<?php echo h($dashboard['path']); ?>" target="_blank" rel="noopener" title="Open dashboard">
+                                        <img src="<?php echo h($dashboard['thumbnail_path']); ?>" alt="Thumbnail dashboard <?php echo h((int)$dashboard['id']); ?>" class="main-ready-thumb">
+                                    </a>
+                                    <?php if ((int)$dashboard['id_owner'] === (int)$user['id']): ?>
+                                        <a class="main-ready-edit-btn" href="results.php" title="Edit dashboard">Edit</a>
+                                    <?php endif; ?>
                                 </div>
-                                <h3><?php echo h($dashboard['title']); ?></h3>
-                            </a>
+                                <h3><a class="main-ready-title-link" href="<?php echo h($dashboard['path']); ?>" target="_blank" rel="noopener"><?php echo h($dashboard['title']); ?></a></h3>
+                            </div>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>

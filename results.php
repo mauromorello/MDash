@@ -351,20 +351,14 @@ try {
                         <?php $dashboardTitle = extractDashboardTitle($result); ?>
 
                         <div class="thumbnail-box">
-                            <a class="thumbnail-link" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener" title="Open dashboard">
-                                <?php if (!empty($result['thumbnail_path']) && is_file(__DIR__ . DIRECTORY_SEPARATOR . $result['thumbnail_path'])): ?>
-                                    <img src="<?php echo h($result['thumbnail_path']); ?>" alt="Thumbnail for result <?php echo h($result['id']); ?>">
-                                <?php else: ?>
-                                    <span>No thumbnail available</span>
-                                <?php endif; ?>
-                            </a>
-
-                            <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>
-                                <button type="button" class="thumbnail-edit-btn edit-code-btn" data-result-id="<?php echo h($result['id']); ?>" title="Edit code" aria-label="Edit code">Edit</button>
+                            <?php if (!empty($result['thumbnail_path']) && is_file(__DIR__ . DIRECTORY_SEPARATOR . $result['thumbnail_path'])): ?>
+                                <img src="<?php echo h($result['thumbnail_path']); ?>" alt="Thumbnail for result <?php echo h($result['id']); ?>">
+                            <?php else: ?>
+                                <span>No thumbnail available</span>
                             <?php endif; ?>
                         </div>
                         <div class="result-meta">
-                            <strong><a class="result-title-link" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener"><?php echo h($dashboardTitle); ?></a></strong>
+                            <strong><?php echo h($dashboardTitle); ?></strong>
                             <span>Author: <?php echo h($ownerLabel); ?></span>
                             <span>AI used: <?php echo h($aiLabel); ?><?php echo $aiProviderModel; ?></span>
                             <span>Visibility: <?php echo ((int)$result['is_public'] === 1) ? 'Public' : 'Private'; ?><?php echo ((int)$result['is_hidden'] === 1) ? ' / Hidden' : ''; ?></span>
