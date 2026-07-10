@@ -897,9 +897,20 @@ input.cell-edit {
   vertical-align: middle;
 }
 
+.result-hub-table th:first-child,
+.result-hub-table td:first-child {
+  width: 64px;
+  min-width: 64px;
+}
+
 .result-thumb-64 {
   width: 64px;
   height: 64px;
+  min-width: 64px;
+  min-height: 64px;
+  max-width: 64px;
+  max-height: 64px;
+  flex: 0 0 64px;
   border: 1px dashed var(--border);
   border-radius: 10px;
   overflow: hidden;
