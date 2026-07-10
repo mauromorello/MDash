@@ -112,40 +112,6 @@ function getNextResultId(PDO $pdo): int {
     return (int)($stmt->fetch(PDO::FETCH_ASSOC)['next_id'] ?? 1);
 }
 
-function loadLoadingPhrases(PDO $pdo): array {
-    try {
-        $tableExists = $pdo->query("SHOW TABLES LIKE 'options'")->fetchColumn();
-        if (!$tableExists) {
-            return [];
-        }
-
-        $stmt = $pdo->prepare(
-            'SELECT option_value
-             FROM options
-             WHERE option_key LIKE ?
-             ORDER BY option_key ASC'
-        );
-        $stmt->execute(['dashboard.loading_phrases.en.%']);
-        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        if (empty($rows)) {
-            return [];
-        }
-
-        $phrases = [];
-        foreach ($rows as $item) {
-            $phrase = trim((string)$item);
-            if ($phrase === '') {
-                continue;
-            }
-            $phrases[] = $phrase;
-        }
-
-        return $phrases;
-    } catch (Throwable $e) {
-        return [];
-    }
-}
-
 function ensureDirectory(string $directory): void {
     if (is_dir($directory)) {
         return;
@@ -423,7 +389,6 @@ $makeup = null;
 $resultFilePath = '';
 $generatedHtml = '';
 $generationSteps = [];
-$loadingPhrases = [];
 $message = '';
 $dashboardId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $selectedAiId = (int)($_POST['id_ai_db'] ?? 0);
@@ -440,8 +405,6 @@ try {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]
     );
-
-    $loadingPhrases = loadLoadingPhrases($pdo);
 } catch (PDOException $e) {
     $error = 'Database error: ' . $e->getMessage();
 }
@@ -751,7 +714,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         .generation-overlay-content {
             position: relative;
             z-index: 2;
-            text-align: center;
             color: #e2e8f0;
             max-width: 760px;
             padding: 24px;
@@ -770,6 +732,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
             font-size: clamp(1rem, 2vw, 1.25rem);
             color: #dbeafe;
             min-height: 1.8em;
+        }
+
+        .generation-overlay-log-panel {
+            margin-top: 14px;
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 12px;
+            padding: 14px;
+            min-width: min(90vw, 560px);
+        }
+
+        .generation-overlay-log {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 8px;
+        }
+
+        .generation-overlay-log li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #cbd5e1;
+            font-size: 0.95rem;
+        }
+
+        .generation-overlay-log li::before {
+            content: '○';
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .generation-overlay-log li.active {
+            color: #dbeafe;
+        }
+
+        .generation-overlay-log li.active::before {
+            content: '●';
+            color: #38bdf8;
+        }
+
+        .generation-overlay-log li.done::before {
+            content: '✓';
+            color: #22c55e;
         }
     </style>
 </head>
@@ -882,42 +889,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         <canvas id="generationCanvas"></canvas>
         <div class="generation-overlay-content">
             <h2 class="generation-overlay-title">Generating Futuristic Dashboard</h2>
-            <p id="generationPhrase" class="generation-overlay-subtitle">Asking AI nicely...</p>
+            <p class="generation-overlay-subtitle">Running generation pipeline, please wait...</p>
+            <div class="generation-overlay-log-panel">
+                <ul id="generationOverlayLog" class="generation-overlay-log">
+                    <li>Preparing dashboard inputs</li>
+                    <li>Validating selected AI profile</li>
+                    <li>Sending request to AI provider</li>
+                    <li>Waiting for AI response</li>
+                    <li>Finalizing generated output</li>
+                </ul>
+            </div>
         </div>
     </div>
 
     <script>
-        const loadingPhrases = <?php echo json_encode($loadingPhrases, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'; ?>;
-
         const overlay = document.getElementById('generationOverlay');
         const canvas = document.getElementById('generationCanvas');
-        const phraseEl = document.getElementById('generationPhrase');
+        const logList = document.getElementById('generationOverlayLog');
         const generateForm = document.getElementById('generateDashboardForm');
         const generateBtn = document.getElementById('generateDashboardBtn');
 
-        let phraseTimer = null;
+        let logTimer = null;
         let animationHandle = null;
         let submitting = false;
 
-        function randomPhrase() {
-            return loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)] || 'Asking AI kindly...';
-        }
-
-        function startPhraseRotation() {
-            if (!phraseEl) {
+        function startLogProgress() {
+            if (!logList) {
                 return;
             }
 
-            phraseEl.textContent = randomPhrase();
-            phraseTimer = window.setInterval(function () {
-                phraseEl.textContent = randomPhrase();
-            }, 3000);
+            const items = Array.from(logList.querySelectorAll('li'));
+            if (items.length === 0) {
+                return;
+            }
+
+            items.forEach(function (item) {
+                item.classList.remove('active');
+                item.classList.remove('done');
+            });
+
+            let current = 0;
+            items[0].classList.add('active');
+
+            logTimer = window.setInterval(function () {
+                if (current < items.length) {
+                    items[current].classList.remove('active');
+                    items[current].classList.add('done');
+                }
+
+                current += 1;
+                if (current >= items.length) {
+                    current = items.length - 1;
+                    items[current].classList.add('active');
+                    return;
+                }
+
+                items[current].classList.add('active');
+            }, 1200);
         }
 
-        function stopPhraseRotation() {
-            if (phraseTimer) {
-                window.clearInterval(phraseTimer);
-                phraseTimer = null;
+        function stopLogProgress() {
+            if (logTimer) {
+                window.clearInterval(logTimer);
+                logTimer = null;
             }
         }
 
@@ -1032,7 +1066,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
 
             overlay.classList.add('active');
             overlay.setAttribute('aria-hidden', 'false');
-            startPhraseRotation();
+            startLogProgress();
             startCanvasAnimation();
         }
 
@@ -1043,7 +1077,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
 
             overlay.classList.remove('active');
             overlay.setAttribute('aria-hidden', 'true');
-            stopPhraseRotation();
+            stopLogProgress();
             stopCanvasAnimation();
         }
 
