@@ -892,6 +892,31 @@ input.cell-edit {
   margin-bottom: 16px;
 }
 
+.result-hub-table th,
+.result-hub-table td {
+  vertical-align: middle;
+}
+
+.result-thumb-64 {
+  width: 64px;
+  height: 64px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: #fff;
+}
+
+.result-thumb-64 img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .result-actions {
   display: flex;
   align-items: center;
@@ -1035,6 +1060,22 @@ input.cell-edit {
 @media (max-width: 700px) {
   .row {
     grid-template-columns: 1fr;
+  }
+
+  .result-hub-table th,
+  .result-hub-table td {
+    padding: 8px 6px;
+  }
+
+  .result-actions {
+    gap: 6px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    font-size: 0.95rem;
   }
 
   .palette-picker-row {

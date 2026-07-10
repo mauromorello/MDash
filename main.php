@@ -157,6 +157,10 @@ try {
                         <a href="dashboards.php" class="btn btn-warning">Dash Pool</a>
                         <p class="main-action-desc">Open your dashboard pool for review and edits.</p>
                     </div>
+                    <div class="main-action-item">
+                        <a href="results.php" class="btn btn-secondary">Dashboard</a>
+                        <p class="main-action-desc">Open dashboard hub with all generated pages and operations.</p>
+                    </div>
                 </div>
             </div>
 

@@ -73,6 +73,35 @@ function removeDirectoryRecursive(string $dir): void {
     @rmdir($dir);
 }
 
+function copyDirectoryRecursive(string $source, string $destination): void {
+    if (!is_dir($source)) {
+        return;
+    }
+
+    if (!is_dir($destination) && !mkdir($destination, 0777, true) && !is_dir($destination)) {
+        throw new RuntimeException('Unable to create destination directory while cloning dashboard.');
+    }
+
+    $items = scandir($source);
+    if ($items === false) {
+        return;
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $sourcePath = $source . DIRECTORY_SEPARATOR . $item;
+        $destinationPath = $destination . DIRECTORY_SEPARATOR . $item;
+        if (is_dir($sourcePath)) {
+            copyDirectoryRecursive($sourcePath, $destinationPath);
+        } else {
+            copy($sourcePath, $destinationPath);
+        }
+    }
+}
+
 function parseDataUrlImage(string $dataUrl): array {
     if (!preg_match('/^data:image\/(png|jpeg|webp);base64,(.+)$/i', $dataUrl, $matches)) {
         throw new RuntimeException('Invalid image data format.');
@@ -112,6 +141,24 @@ function extractDashboardTitle(array $result): string {
     return 'Dashboard #' . (string)($result['id'] ?? '');
 }
 
+function replaceDashboardTitleInPrompt(string $finalPrompt, string $newTitle): string {
+    if (trim($finalPrompt) === '') {
+        return '[Dashboard title]' . "\n" . $newTitle;
+    }
+
+    if (preg_match('/\[Dashboard title\]\s*(.+?)(?:\n\[|$)/si', $finalPrompt)) {
+        return (string)preg_replace('/(\[Dashboard title\]\s*)(.+?)(?=(\n\[|$))/si', '$1' . $newTitle, $finalPrompt, 1);
+    }
+
+    return '[Dashboard title]' . "\n" . $newTitle . "\n\n" . $finalPrompt;
+}
+
+function getNextResultId(PDO $pdo): int {
+    $stmt = $pdo->query('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM results');
+    $row = $stmt->fetch();
+    return (int)($row['next_id'] ?? 1);
+}
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -129,7 +176,9 @@ $error = '';
 $message = '';
 $showHidden = isset($_GET['show_hidden']) && (int)$_GET['show_hidden'] === 1;
 $requestedAction = (string)($_POST['action'] ?? $_GET['action'] ?? '');
-$expectsJson = ($requestedAction === 'get_html_code') || ($requestedAction === 'save_html_code' && ($_POST['ajax'] ?? '') === '1');
+$expectsJson = ($requestedAction === 'get_html_code')
+    || ($requestedAction === 'save_html_code' && ($_POST['ajax'] ?? '') === '1')
+    || ($requestedAction === 'clone_result' && ($_POST['ajax'] ?? '') === '1');
 
 try {
     $pdo = new PDO(
@@ -191,7 +240,7 @@ try {
         $action = (string)($_POST['action'] ?? '');
         $resultId = (int)($_POST['result_id'] ?? 0);
 
-        if ($resultId > 0 && in_array($action, ['set_hidden', 'delete_result', 'save_thumbnail', 'save_html_code'], true)) {
+        if ($resultId > 0 && in_array($action, ['set_hidden', 'set_public', 'delete_result', 'save_thumbnail', 'save_html_code', 'clone_result'], true)) {
             $ownerStmt = $pdo->prepare('SELECT id, id_owner, path FROM results WHERE id = ? LIMIT 1');
             $ownerStmt->execute([$resultId]);
             $ownerRow = $ownerStmt->fetch();
@@ -200,8 +249,95 @@ try {
                 throw new RuntimeException('Result not found.');
             }
 
-            if ((int)$ownerRow['id_owner'] !== (int)$user['id']) {
+            $isOwner = (int)$ownerRow['id_owner'] === (int)$user['id'];
+            $isClone = $action === 'clone_result';
+            if (!$isOwner && !$isClone) {
                 throw new RuntimeException('You can only modify your own dashboards.');
+            }
+
+            if ($isClone) {
+                $visibilityStmt = $pdo->prepare('SELECT id, id_owner, is_public, is_hidden, path, thumbnail_path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, `HTML` FROM results WHERE id = ? LIMIT 1');
+                $visibilityStmt->execute([$resultId]);
+                $sourceRow = $visibilityStmt->fetch();
+                if (!$sourceRow) {
+                    throw new RuntimeException('Result not found.');
+                }
+
+                $isVisiblePublic = (int)$sourceRow['is_public'] === 1 && (int)$sourceRow['is_hidden'] === 0;
+                if (!$isOwner && !$isVisiblePublic) {
+                    throw new RuntimeException('Not authorized to clone this dashboard.');
+                }
+
+                $newTitle = trim((string)($_POST['clone_title'] ?? ''));
+                if ($newTitle === '') {
+                    throw new RuntimeException('Clone title is required.');
+                }
+
+                $newResultId = getNextResultId($pdo);
+                $newResultDir = __DIR__ . DIRECTORY_SEPARATOR . 'results' . DIRECTORY_SEPARATOR . $newResultId;
+                if (!is_dir($newResultDir) && !mkdir($newResultDir, 0777, true) && !is_dir($newResultDir)) {
+                    throw new RuntimeException('Unable to create destination folder for clone.');
+                }
+
+                $sourceRelativePath = (string)($sourceRow['path'] ?? '');
+                $sourceAbsolutePath = $sourceRelativePath !== '' ? __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $sourceRelativePath) : '';
+                $sourceResultDir = ($sourceRelativePath !== '') ? dirname($sourceAbsolutePath) : '';
+                if ($sourceResultDir !== '' && is_dir($sourceResultDir)) {
+                    copyDirectoryRecursive($sourceResultDir, $newResultDir);
+                }
+
+                $newHtmlName = $sourceRelativePath !== '' ? basename($sourceRelativePath) : 'dashboard.html';
+                $newPath = 'results/' . $newResultId . '/' . $newHtmlName;
+                $newAbsoluteHtmlPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $newPath);
+
+                $sourceHtml = (string)($sourceRow['HTML'] ?? '');
+                if ($sourceHtml === '' && $sourceAbsolutePath !== '' && is_file($sourceAbsolutePath)) {
+                    $sourceHtml = (string)file_get_contents($sourceAbsolutePath);
+                }
+                if ($sourceHtml !== '') {
+                    file_put_contents($newAbsoluteHtmlPath, $sourceHtml);
+                }
+
+                $newThumbnailPath = '';
+                $sourceThumbRel = trim((string)($sourceRow['thumbnail_path'] ?? ''));
+                if ($sourceThumbRel !== '') {
+                    $sourceThumbAbs = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $sourceThumbRel);
+                    if (is_file($sourceThumbAbs)) {
+                        $thumbBase = basename($sourceThumbAbs);
+                        $destThumbAbs = $newResultDir . DIRECTORY_SEPARATOR . $thumbBase;
+                        if (copy($sourceThumbAbs, $destThumbAbs)) {
+                            $newThumbnailPath = 'results/' . $newResultId . '/' . $thumbBase;
+                        }
+                    }
+                }
+
+                $newFinalPrompt = replaceDashboardTitleInPrompt((string)($sourceRow['final_prompt'] ?? ''), $newTitle);
+
+                $insertClone = $pdo->prepare(
+                    'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)'
+                );
+                $insertClone->execute([
+                    $newResultId,
+                    $newPath,
+                    (int)($sourceRow['id_template'] ?? 0),
+                    (int)($sourceRow['id_ai_db'] ?? 0),
+                    (string)($sourceRow['ai_title'] ?? ''),
+                    (string)($sourceRow['ai_provider'] ?? ''),
+                    (string)($sourceRow['ai_model'] ?? ''),
+                    $newFinalPrompt,
+                    $newThumbnailPath,
+                    $sourceHtml,
+                    (int)$user['id'],
+                ]);
+
+                if (($_POST['ajax'] ?? '') === '1') {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'message' => 'Dashboard cloned successfully.']);
+                    exit;
+                }
+
+                $message = 'Dashboard cloned successfully.';
             }
 
             if ($action === 'set_hidden') {
@@ -209,6 +345,13 @@ try {
                 $updateStmt = $pdo->prepare('UPDATE results SET is_hidden = ? WHERE id = ? AND id_owner = ?');
                 $updateStmt->execute([$hiddenValue, $resultId, (int)$user['id']]);
                 $message = $hiddenValue === 1 ? 'Dashboard hidden successfully.' : 'Dashboard revealed successfully.';
+            }
+
+            if ($action === 'set_public') {
+                $publicValue = (int)($_POST['public_value'] ?? 0) === 1 ? 1 : 0;
+                $updateStmt = $pdo->prepare('UPDATE results SET is_public = ? WHERE id = ? AND id_owner = ?');
+                $updateStmt->execute([$publicValue, $resultId, (int)$user['id']]);
+                $message = $publicValue === 1 ? 'Dashboard is now public.' : 'Dashboard is now private.';
             }
 
             if ($action === 'delete_result') {
@@ -342,62 +485,112 @@ try {
                 <p class="empty">No generated dashboards found yet.</p>
             </div>
         <?php else: ?>
-            <div class="results-grid">
-                <?php foreach ($results as $result): ?>
-                    <div class="card result-card">
-                        <?php $ownerLabel = (string)($result['owner_username'] ?: ('User #' . $result['id_owner'])); ?>
-                        <?php $aiLabel = (string)($result['ai_title'] ?: ('#' . $result['id_ai_db'])); ?>
-                        <?php $aiProviderModel = !empty($result['ai_provider']) || !empty($result['ai_model']) ? ' (' . h($result['ai_provider']) . ' / ' . h($result['ai_model']) . ')' : ''; ?>
-                        <?php $dashboardTitle = extractDashboardTitle($result); ?>
+            <div class="table-wrap">
+                <table class="result-hub-table">
+                    <thead>
+                        <tr>
+                            <th style="width:78px;">Thumb</th>
+                            <th>Title</th>
+                            <th>Owner</th>
+                            <th style="min-width:360px;">Operations</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($results as $result): ?>
+                            <?php $ownerLabel = (string)($result['owner_username'] ?: ('User #' . $result['id_owner'])); ?>
+                            <?php $dashboardTitle = extractDashboardTitle($result); ?>
+                            <?php $isOwner = (int)$result['id_owner'] === (int)$user['id']; ?>
+                            <tr>
+                                <td>
+                                    <div class="result-thumb-64">
+                                        <?php if (!empty($result['thumbnail_path']) && is_file(__DIR__ . DIRECTORY_SEPARATOR . $result['thumbnail_path'])): ?>
+                                            <img src="<?php echo h($result['thumbnail_path']); ?>" alt="Thumbnail for result <?php echo h($result['id']); ?>">
+                                        <?php else: ?>
+                                            <span>-</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <strong><?php echo h($dashboardTitle); ?></strong>
+                                    <div class="meta">#<?php echo h((int)$result['id']); ?></div>
+                                </td>
+                                <td><?php echo h($ownerLabel); ?></td>
+                                <td>
+                                    <div class="result-actions">
+                                        <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">🔗</a>
+                                        <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" download title="Download dashboard" aria-label="Download dashboard">⬇️</a>
 
-                        <div class="thumbnail-box">
-                            <?php if (!empty($result['thumbnail_path']) && is_file(__DIR__ . DIRECTORY_SEPARATOR . $result['thumbnail_path'])): ?>
-                                <img src="<?php echo h($result['thumbnail_path']); ?>" alt="Thumbnail for result <?php echo h($result['id']); ?>">
-                            <?php else: ?>
-                                <span>No thumbnail available</span>
-                            <?php endif; ?>
-                        </div>
-                        <div class="result-meta">
-                            <strong><?php echo h($dashboardTitle); ?></strong>
-                            <span>Author: <?php echo h($ownerLabel); ?></span>
-                            <span>AI used: <?php echo h($aiLabel); ?><?php echo $aiProviderModel; ?></span>
-                            <span>Visibility: <?php echo ((int)$result['is_public'] === 1) ? 'Public' : 'Private'; ?><?php echo ((int)$result['is_hidden'] === 1) ? ' / Hidden' : ''; ?></span>
-                            <span>Saved path: <?php echo h($result['path']); ?></span>
-                        </div>
+                                        <?php if ($isOwner): ?>
+                                            <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste thumbnail" aria-label="Paste thumbnail">📋</button>
+                                        <?php endif; ?>
 
-                        <div class="result-actions">
-                            <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">👁️</a>
-                            <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" download title="Download dashboard" aria-label="Download dashboard">⬇️</a>
+                                        <?php if ($isOwner): ?>
+                                            <form method="post">
+                                                <input type="hidden" name="action" value="set_public">
+                                                <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
+                                                <input type="hidden" name="public_value" value="<?php echo ((int)$result['is_public'] === 1) ? '0' : '1'; ?>">
+                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>" aria-label="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>"><?php echo ((int)$result['is_public'] === 1) ? '🔓' : '🔒'; ?></button>
+                                            </form>
 
-                            <?php if ((int)$result['id_owner'] === (int)$user['id']): ?>
-                                <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste screenshot" aria-label="Paste screenshot">📋</button>
+                                            <form method="post">
+                                                <input type="hidden" name="action" value="set_hidden">
+                                                <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
+                                                <input type="hidden" name="hidden_value" value="<?php echo ((int)$result['is_hidden'] === 1) ? '0' : '1'; ?>">
+                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? '👁️' : '🙈'; ?></button>
+                                            </form>
 
-                                <button type="button" class="btn-ghost icon-btn edit-code-btn" data-result-id="<?php echo h($result['id']); ?>" title="Edit code" aria-label="Edit code">&lt;/&gt;</button>
+                                            <button type="button" class="btn-danger icon-btn delete-result-btn" data-result-id="<?php echo h($result['id']); ?>" title="Delete dashboard" aria-label="Delete dashboard">🗑️</button>
+                                        <?php endif; ?>
 
-                                <form method="post" class="thumbnail-form" id="thumbnailForm<?php echo h($result['id']); ?>">
-                                    <input type="hidden" name="action" value="save_thumbnail">
-                                    <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
-                                    <input type="hidden" name="thumbnail_data" value="" class="thumbnail-data-input">
-                                </form>
+                                        <button type="button" class="btn-ghost icon-btn clone-result-btn" data-result-id="<?php echo h($result['id']); ?>" data-title="<?php echo h($dashboardTitle); ?>" title="Clone dashboard" aria-label="Clone dashboard">🧬</button>
 
-                                <form method="post">
-                                    <input type="hidden" name="action" value="set_hidden">
-                                    <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
-                                    <input type="hidden" name="hidden_value" value="<?php echo ((int)$result['is_hidden'] === 1) ? '0' : '1'; ?>">
-                                    <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Reveal dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Reveal dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? '👁️' : '🙈'; ?></button>
-                                </form>
+                                        <?php if ($isOwner): ?>
+                                            <button type="button" class="btn-ghost icon-btn edit-code-btn" data-result-id="<?php echo h($result['id']); ?>" title="Edit code" aria-label="Edit code">&lt;/&gt;</button>
+                                        <?php endif; ?>
 
-                                <form method="post" onsubmit="return confirm('Delete this dashboard permanently? This action removes DB record and files.');">
-                                    <input type="hidden" name="action" value="delete_result">
-                                    <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
-                                    <button type="submit" class="btn-danger icon-btn" title="Delete permanently" aria-label="Delete permanently">🗑️</button>
-                                </form>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
+                                        <?php if ($isOwner): ?>
+                                            <form method="post" class="thumbnail-form" id="thumbnailForm<?php echo h($result['id']); ?>">
+                                                <input type="hidden" name="action" value="save_thumbnail">
+                                                <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
+                                                <input type="hidden" name="thumbnail_data" value="" class="thumbnail-data-input">
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         <?php endif; ?>
+    </div>
+
+    <form method="post" id="deleteResultForm" class="hidden">
+        <input type="hidden" name="action" value="delete_result">
+        <input type="hidden" name="result_id" id="deleteResultId" value="0">
+    </form>
+
+    <form method="post" id="cloneResultForm" class="hidden">
+        <input type="hidden" name="action" value="clone_result">
+        <input type="hidden" name="result_id" id="cloneResultId" value="0">
+        <input type="hidden" name="clone_title" id="cloneResultTitle" value="">
+    </form>
+
+    <div id="deleteModal" class="code-modal hidden" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+        <div class="code-modal-backdrop" data-close-delete="1"></div>
+        <div class="code-modal-content">
+            <div class="code-modal-header">
+                <h2 id="deleteModalTitle">Delete dashboard</h2>
+                <button type="button" class="secondary" id="deleteModalCancelTop">Cancel</button>
+            </div>
+            <div class="code-modal-body" style="padding:16px;color:#e2e8f0;">
+                This action will permanently delete dashboard files and database record.
+            </div>
+            <div class="code-modal-actions">
+                <button type="button" id="deleteModalConfirm" class="btn-danger">Delete</button>
+                <button type="button" id="deleteModalCancel" class="secondary">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <div id="editCodeModal" class="code-modal hidden" role="dialog" aria-modal="true" aria-labelledby="codeModalTitle">
@@ -499,6 +692,87 @@ try {
                 }
             });
         });
+
+        const cloneButtons = document.querySelectorAll('.clone-result-btn');
+        const cloneResultForm = document.getElementById('cloneResultForm');
+        const cloneResultId = document.getElementById('cloneResultId');
+        const cloneResultTitle = document.getElementById('cloneResultTitle');
+
+        cloneButtons.forEach((button) => {
+            button.addEventListener('click', function () {
+                if (!cloneResultForm || !cloneResultId || !cloneResultTitle) {
+                    return;
+                }
+
+                const resultId = String(button.getAttribute('data-result-id') || '0');
+                const currentTitle = String(button.getAttribute('data-title') || 'Dashboard');
+                const nextTitle = window.prompt('Clone name', currentTitle + ' - Copy');
+                if (!nextTitle || nextTitle.trim() === '') {
+                    return;
+                }
+
+                cloneResultId.value = resultId;
+                cloneResultTitle.value = nextTitle.trim();
+                cloneResultForm.submit();
+            });
+        });
+
+        const deleteButtons = document.querySelectorAll('.delete-result-btn');
+        const deleteModal = document.getElementById('deleteModal');
+        const deleteResultForm = document.getElementById('deleteResultForm');
+        const deleteResultId = document.getElementById('deleteResultId');
+        const deleteModalConfirm = document.getElementById('deleteModalConfirm');
+        const deleteModalCancel = document.getElementById('deleteModalCancel');
+        const deleteModalCancelTop = document.getElementById('deleteModalCancelTop');
+        let pendingDeleteId = 0;
+
+        function openDeleteModal(resultId) {
+            pendingDeleteId = resultId;
+            if (deleteModal) {
+                deleteModal.classList.remove('hidden');
+            }
+        }
+
+        function closeDeleteModal() {
+            pendingDeleteId = 0;
+            if (deleteModal) {
+                deleteModal.classList.add('hidden');
+            }
+        }
+
+        deleteButtons.forEach((button) => {
+            button.addEventListener('click', function () {
+                const resultId = Number(button.getAttribute('data-result-id') || '0');
+                if (!resultId) {
+                    return;
+                }
+                openDeleteModal(resultId);
+            });
+        });
+
+        if (deleteModalConfirm) {
+            deleteModalConfirm.addEventListener('click', function () {
+                if (!pendingDeleteId || !deleteResultForm || !deleteResultId) {
+                    return;
+                }
+                deleteResultId.value = String(pendingDeleteId);
+                deleteResultForm.submit();
+            });
+        }
+
+        if (deleteModalCancel) {
+            deleteModalCancel.addEventListener('click', closeDeleteModal);
+        }
+
+        if (deleteModalCancelTop) {
+            deleteModalCancelTop.addEventListener('click', closeDeleteModal);
+        }
+
+        if (deleteModal) {
+            deleteModal.querySelectorAll('[data-close-delete="1"]').forEach((el) => {
+                el.addEventListener('click', closeDeleteModal);
+            });
+        }
 
         const editCodeModal = document.getElementById('editCodeModal');
         const closeCodeModalBtn = document.getElementById('closeCodeModalBtn');
