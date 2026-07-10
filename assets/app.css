@@ -629,8 +629,15 @@ button.secondary { background: #64748b; }
   padding: 24px 16px;
 }
 
-.login-panel {
+.login-shell {
   width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-credentials-box {
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -638,16 +645,15 @@ button.secondary { background: #64748b; }
   box-shadow: 0 10px 35px rgba(15, 23, 42, 0.08);
 }
 
-.login-panel h1 {
+.login-credentials-box h1 {
   margin: 0 0 14px;
   font-size: 1.4rem;
 }
 
 .login-logo-box {
-  width: 100%;
-  max-width: 400px;
+  width: min(400px, 100%);
   height: 300px;
-  margin: 0 auto 16px;
+  margin: 0 auto;
   border: 1px dashed #94a3b8;
   border-radius: 12px;
   background: #f8fafc;
@@ -677,6 +683,12 @@ button.secondary { background: #64748b; }
 
 .login-form button {
   width: 100%;
+}
+
+@media (max-width: 480px) {
+  .login-logo-box {
+    height: 240px;
+  }
 }
 
 .admin-page {

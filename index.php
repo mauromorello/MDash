@@ -20,26 +20,28 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
     </header>
 
     <main class="login-page">
-        <section class="login-panel" aria-labelledby="loginTitle">
-            <h1 id="loginTitle">Sign in</h1>
-
+        <section class="login-shell" aria-labelledby="loginTitle">
             <div class="login-logo-box" aria-label="Logo placeholder 400 by 300">
                 <img src="assets/logo.png" alt="MDash logo" width="400" height="300">
             </div>
 
-            <form id="loginForm" class="login-form">
-                <div class="field">
-                    <label for="user">Login</label>
-                    <input type="text" id="user" name="user" required>
-                </div>
-                <div class="field">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
-                </div>
-                <button type="submit">Login</button>
-            </form>
+            <div class="login-credentials-box">
+                <h1 id="loginTitle">Sign in</h1>
 
-            <div id="message" class="login-message" aria-live="polite"></div>
+                <form id="loginForm" class="login-form">
+                    <div class="field">
+                        <label for="user">Login</label>
+                        <input type="text" id="user" name="user" required>
+                    </div>
+                    <div class="field">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit">Login</button>
+                </form>
+
+                <div id="message" class="login-message" aria-live="polite"></div>
+            </div>
         </section>
     </main>
 
