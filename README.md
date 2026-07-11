@@ -66,6 +66,10 @@ The project provides:
 - `results.php` lists generated dashboards (owner + public visibility rules).
 - Owner actions include hide/reveal, permanent delete, and custom thumbnail paste.
 - Pasted clipboard screenshot is stored in `results/<id>/thumbnail.*`.
+- Opening a dashboard from app links increments `results.n_views`.
+- Downloading a dashboard from app links increments `results.n_download`.
+- Cloning a dashboard increments source `results.n_clone`.
+- Main hub dashboard cards are ordered by `n_views` descending.
 
 ## Pages And Main Responsibilities
 
@@ -221,6 +225,9 @@ ai_provider VARCHAR(100) NOT NULL DEFAULT '',
 ai_model VARCHAR(100) NOT NULL DEFAULT '',
 final_prompt TEXT NOT NULL,
 thumbnail_path TEXT NOT NULL,
+n_views INT NOT NULL DEFAULT 0,
+n_download INT NOT NULL DEFAULT 0,
+n_clone INT NOT NULL DEFAULT 0,
 HTML LONGTEXT NOT NULL,
 id_owner INT NOT NULL,
 is_public INT NOT NULL DEFAULT 0,

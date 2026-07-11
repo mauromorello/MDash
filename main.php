@@ -41,6 +41,8 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 function extractDashboardTitle(array $result): string {
     $finalPrompt = (string)($result['final_prompt'] ?? '');
     if ($finalPrompt !== '' && preg_match('/\[Dashboard title\]\s*(.+?)(?:\n\[|$)/si', $finalPrompt, $matches)) {
@@ -72,12 +74,14 @@ try {
         ]
     );
 
+        mdashEnsureResultsAiColumns($pdo);
+
         $stmt = $pdo->prepare(
-                'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.path, r.thumbnail_path, r.final_prompt
+                                'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.path, r.thumbnail_path, r.final_prompt, r.n_views, r.n_download, r.n_clone
          FROM results r
          WHERE ((r.id_owner = :user_id AND r.is_hidden = 0) OR (r.is_public = 1 AND r.is_hidden = 0))
            AND COALESCE(TRIM(r.thumbnail_path), "") <> ""
-         ORDER BY r.id DESC
+                 ORDER BY r.n_views DESC, r.id DESC
          LIMIT 80'
     );
     $stmt->execute(['user_id' => (int)$user['id']]);
@@ -94,8 +98,11 @@ try {
             'id' => (int)$row['id'],
             'id_owner' => (int)$row['id_owner'],
             'title' => extractDashboardTitle($row),
-            'path' => (string)($row['path'] ?? ''),
+            'tracked_path' => 'results.php?action=open_result&result_id=' . (int)$row['id'],
             'thumbnail_path' => $thumbnailPath,
+            'n_views' => (int)($row['n_views'] ?? 0),
+            'n_download' => (int)($row['n_download'] ?? 0),
+            'n_clone' => (int)($row['n_clone'] ?? 0),
         ];
     }
 } catch (Throwable $e) {
@@ -177,14 +184,19 @@ try {
                         <?php foreach ($readyDashboards as $dashboard): ?>
                             <div class="main-ready-card">
                                 <div class="main-ready-thumb-wrap">
-                                    <a class="main-ready-thumb-link" href="<?php echo h($dashboard['path']); ?>" target="_blank" rel="noopener" title="Open dashboard">
+                                    <a class="main-ready-thumb-link" href="<?php echo h($dashboard['tracked_path']); ?>" target="_blank" rel="noopener" title="Open dashboard">
                                         <img src="<?php echo h($dashboard['thumbnail_path']); ?>" alt="Thumbnail dashboard <?php echo h((int)$dashboard['id']); ?>" class="main-ready-thumb">
                                     </a>
                                     <?php if ((int)$dashboard['id_owner'] === (int)$user['id']): ?>
                                         <a class="main-ready-edit-btn" href="results.php" title="Edit dashboard">Edit</a>
                                     <?php endif; ?>
                                 </div>
-                                <h3><a class="main-ready-title-link" href="<?php echo h($dashboard['path']); ?>" target="_blank" rel="noopener"><?php echo h($dashboard['title']); ?></a></h3>
+                                <h3><a class="main-ready-title-link" href="<?php echo h($dashboard['tracked_path']); ?>" target="_blank" rel="noopener"><?php echo h($dashboard['title']); ?></a></h3>
+                                <div class="result-stats-badges main-ready-stats" aria-label="Dashboard stats">
+                                    <span class="result-stat-badge" title="Views">👁️ <?php echo h((int)$dashboard['n_views']); ?></span>
+                                    <span class="result-stat-badge" title="Downloads">⬇️ <?php echo h((int)$dashboard['n_download']); ?></span>
+                                    <span class="result-stat-badge" title="Clones">🧬 <?php echo h((int)$dashboard['n_clone']); ?></span>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     </div>

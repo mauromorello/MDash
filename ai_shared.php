@@ -104,6 +104,9 @@ function mdashEnsureResultsAiColumns(PDO $pdo): void {
             ai_model VARCHAR(100) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
             final_prompt TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             thumbnail_path TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
+            n_views INT NOT NULL DEFAULT 0,
+            n_download INT NOT NULL DEFAULT 0,
+            n_clone INT NOT NULL DEFAULT 0,
             `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             id_owner INT NOT NULL,
             is_public INT NOT NULL DEFAULT '0',
@@ -117,6 +120,9 @@ function mdashEnsureResultsAiColumns(PDO $pdo): void {
         'ai_title' => "ALTER TABLE results ADD COLUMN ai_title VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' AFTER id_ai_db",
         'ai_provider' => "ALTER TABLE results ADD COLUMN ai_provider VARCHAR(100) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' AFTER ai_title",
         'ai_model' => "ALTER TABLE results ADD COLUMN ai_model VARCHAR(100) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' AFTER ai_provider",
+        'n_views' => "ALTER TABLE results ADD COLUMN n_views INT NOT NULL DEFAULT 0 AFTER is_hidden",
+        'n_download' => "ALTER TABLE results ADD COLUMN n_download INT NOT NULL DEFAULT 0 AFTER n_views",
+        'n_clone' => "ALTER TABLE results ADD COLUMN n_clone INT NOT NULL DEFAULT 0 AFTER n_download",
     ];
 
     foreach ($columns as $column => $alterSql) {

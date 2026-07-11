@@ -965,6 +965,31 @@ input.cell-edit {
   background: #475569;
 }
 
+.result-stats-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.result-stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #e2e8f0;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.main-ready-stats {
+  padding: 0 10px 10px;
+  margin-top: 0;
+}
+
 .compact-title {
   margin-top: 0;
 }

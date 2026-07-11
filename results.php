@@ -194,6 +194,62 @@ try {
     mdashEnsureResultsAiColumns($pdo);
     mdashEnsureAiDbTable($pdo);
 
+    $getAction = (string)($_GET['action'] ?? '');
+    if (in_array($getAction, ['open_result', 'download_result'], true)) {
+        $resultId = (int)($_GET['result_id'] ?? 0);
+        if ($resultId <= 0) {
+            throw new RuntimeException('Invalid result id.');
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT id, id_owner, path, is_public, is_hidden
+             FROM results
+             WHERE id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$resultId]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            throw new RuntimeException('Result not found.');
+        }
+
+        $isOwner = (int)$row['id_owner'] === (int)$user['id'];
+        $isVisiblePublic = (int)$row['is_public'] === 1 && (int)$row['is_hidden'] === 0;
+        if (!$isOwner && !$isVisiblePublic) {
+            throw new RuntimeException('Not authorized.');
+        }
+
+        $relativePath = trim((string)($row['path'] ?? ''));
+        if ($relativePath === '') {
+            throw new RuntimeException('Result path not found.');
+        }
+
+        if ($getAction === 'open_result') {
+            $pdo->prepare('UPDATE results SET n_views = n_views + 1 WHERE id = ?')->execute([$resultId]);
+            header('Location: ' . $relativePath);
+            exit;
+        }
+
+        $pdo->prepare('UPDATE results SET n_download = n_download + 1 WHERE id = ?')->execute([$resultId]);
+
+        $diskPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+        if (!is_file($diskPath)) {
+            throw new RuntimeException('File not found on disk.');
+        }
+
+        $filename = basename($diskPath);
+        $mimeType = (string)(mime_content_type($diskPath) ?: 'application/octet-stream');
+        header('Content-Description: File Transfer');
+        header('Content-Type: ' . $mimeType);
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
+        header('Content-Length: ' . (string)filesize($diskPath));
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        readfile($diskPath);
+        exit;
+    }
+
     if (($_GET['action'] ?? '') === 'get_html_code') {
         $resultId = (int)($_GET['result_id'] ?? 0);
         header('Content-Type: application/json');
@@ -330,6 +386,7 @@ try {
                     $sourceHtml,
                     (int)$user['id'],
                 ]);
+                $pdo->prepare('UPDATE results SET n_clone = n_clone + 1 WHERE id = ?')->execute([$resultId]);
 
                 if (($_POST['ajax'] ?? '') === '1') {
                     header('Content-Type: application/json');
@@ -513,12 +570,17 @@ try {
                                 <td>
                                     <strong><?php echo h($dashboardTitle); ?></strong>
                                     <div class="meta">#<?php echo h((int)$result['id']); ?></div>
+                                    <div class="result-stats-badges" aria-label="Dashboard stats">
+                                        <span class="result-stat-badge" title="Views">👁️ <?php echo h((int)($result['n_views'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Downloads">⬇️ <?php echo h((int)($result['n_download'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Clones">🧬 <?php echo h((int)($result['n_clone'] ?? 0)); ?></span>
+                                    </div>
                                 </td>
                                 <td><?php echo h($ownerLabel); ?></td>
                                 <td>
                                     <div class="result-actions">
-                                        <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">🔗</a>
-                                        <a class="btn-ghost icon-btn" href="<?php echo h($result['path']); ?>" download title="Download dashboard" aria-label="Download dashboard">⬇️</a>
+                                        <a class="btn-ghost icon-btn" href="results.php?action=open_result&amp;result_id=<?php echo h((int)$result['id']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">🔗</a>
+                                        <a class="btn-ghost icon-btn" href="results.php?action=download_result&amp;result_id=<?php echo h((int)$result['id']); ?>" title="Download dashboard" aria-label="Download dashboard">⬇️</a>
 
                                         <?php if ($isOwner): ?>
                                             <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste thumbnail" aria-label="Paste thumbnail">📋</button>
