@@ -3,7 +3,8 @@ $key = $_GET['key'] ?? $_POST['key'] ?? '';
 $expectedKey = 'lskfdjsdkfjeijrnsdnfmndmf';
 if ($key !== $expectedKey) {
     http_response_code(403);
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Config access denied</title><link rel="stylesheet" href="assets/app.css"></head><body><div class="config-page"><a href="main.php" class="brand-home">Mdash</a><h1>Unauthorized access</h1><p>Missing or invalid key parameter.</p></div></body></html>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Config access denied</title><script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link rel="stylesheet" href="assets/app.css"></head><body><div class="config-page"><a href="main.php" class="brand-home">Mdash</a><h1>Unauthorized access</h1><p>Missing or invalid key parameter.</p></div></body></html>';
     exit;
 }
 
@@ -169,7 +170,8 @@ function h($value) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Config helper</title>
-    <link rel="stylesheet" href="assets/app.css">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
 <div class="config-page">
@@ -296,3 +298,4 @@ function h($value) {
 </div>
 </body>
 </html>
+

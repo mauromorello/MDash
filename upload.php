@@ -60,6 +60,45 @@ function utf8Length(string $value): int {
     return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
 }
 
+function ensureOptionsTable(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS options (
+            option_key VARCHAR(191) NOT NULL PRIMARY KEY,
+            option_value LONGTEXT NOT NULL,
+            value_type VARCHAR(20) NOT NULL DEFAULT 'text',
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
+function getUploadClauseOptionKey(int $userId): string {
+    return 'upload.data_clause.accepted.user.' . $userId;
+}
+
+function hasAcceptedUploadClause(PDO $pdo, int $userId): bool {
+    $stmt = $pdo->prepare('SELECT option_value FROM options WHERE option_key = ? LIMIT 1');
+    $stmt->execute([getUploadClauseOptionKey($userId)]);
+    $row = $stmt->fetch();
+
+    return $row !== false && trim((string)($row['option_value'] ?? '')) !== '';
+}
+
+function saveUploadClauseAcceptance(PDO $pdo, int $userId, string $username): void {
+    $optionKey = getUploadClauseOptionKey($userId);
+    $payload = json_encode([
+        'accepted' => 1,
+        'user_id' => $userId,
+        'username' => $username,
+        'accepted_at' => date('Y-m-d H:i:s'),
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO options (option_key, option_value, value_type) VALUES (?, ?, ?)\n'
+        . 'ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), value_type = VALUES(value_type)'
+    );
+    $stmt->execute([$optionKey, (string)$payload, 'json']);
+}
+
 function defaultDataDiscoveryPrompt(): string {
     return "You are a senior data analyst.\n"
         . "Analyze the full dataset and produce a robust schema and parsing strategy for future dashboards.\n"
@@ -118,17 +157,152 @@ function readDatasetContent(string $absolutePath): string {
 function buildUploadAutofillPrompt(array $uploadRecord, string $datasetContent): string {
     $fileName = (string)($uploadRecord['filename'] ?? 'data.csv');
 
-    return "Sei un data analyst senior.\n"
-        . "Analizza TUTTO il file allegato e compila i campi richiesti.\n"
-        . "Rispondi in testo semplice e in formato rigidamente interpretabile, senza markdown.\n"
-        . "Usa ESATTAMENTE queste chiavi, una per riga:\n"
-        . "Title: <titolo breve>\n"
-        . "Long title: <descrizione estesa>\n"
-        . "Prompt 1: <che cosa e la tabella e a cosa serve>\n"
-        . "Prompt 2: <analisi dettagliata di ogni campo con istruzioni per parsing successivi, con forte focus su parsing corretto di date e numeri>\n\n"
+    return "You are a senior data analyst.\n"
+        . "Analyze the FULL dataset content below (not only a sample).\n"
+        . "IMPORTANT: your entire answer MUST be in English only.\n"
+        . "Return plain text only (no markdown, no code fences).\n"
+        . "Return EXACTLY these 4 keys, one key per line and in this order:\n"
+        . "Title: <short title in English>\n"
+        . "Long title: <long descriptive title in English>\n"
+        . "Prompt 1: <what this table is and what it is used for, in English>\n"
+        . "Prompt 2: <STRUCTURED field-by-field schema and parsing rules in English>\n\n"
+        . "Prompt 2 must include, for EVERY detected field/column, all of these elements:\n"
+        . "- Field name\n"
+        . "- Business meaning\n"
+        . "- Observed data type\n"
+        . "- Example values\n"
+        . "- Parsing rule\n"
+        . "- Date parsing format (if applicable)\n"
+        . "- Numeric normalization rule (if applicable)\n"
+        . "- Validation checks\n"
+        . "If a rule is unknown, state 'Unknown - requires business confirmation'.\n\n"
         . "File name: {$fileName}\n"
-        . "Dataset completo:\n"
+        . "Full dataset content:\n"
         . $datasetContent;
+}
+
+function prompt2LooksStructural(string $prompt2): bool {
+    $text = trim($prompt2);
+    if ($text === '') {
+        return false;
+    }
+
+    $fieldMarkers = preg_match_all('/(^|\n)\s*(Field|Column)\s*[:\-]/i', $text);
+    $parseMarkers = preg_match_all('/parsing|normalization|validation|date format|type/i', $text);
+
+    return ($fieldMarkers !== false && $fieldMarkers >= 2) && ($parseMarkers !== false && $parseMarkers >= 3);
+}
+
+function detectLikelyType(array $values): string {
+    $nonEmpty = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $values), static fn($v) => $v !== ''));
+    if (empty($nonEmpty)) {
+        return 'string';
+    }
+
+    $isBool = true;
+    $isNumber = true;
+    $isDate = true;
+
+    foreach ($nonEmpty as $value) {
+        $lower = strtolower($value);
+        if (!in_array($lower, ['0', '1', 'true', 'false', 'yes', 'no', 'y', 'n'], true)) {
+            $isBool = false;
+        }
+
+        $normalized = str_replace([' ', ','], ['', '.'], $value);
+        if (!preg_match('/^-?\d+(\.\d+)?$/', $normalized)) {
+            $isNumber = false;
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            $isDate = false;
+        }
+    }
+
+    if ($isBool) {
+        return 'boolean';
+    }
+    if ($isNumber) {
+        return 'number';
+    }
+    if ($isDate) {
+        return 'date';
+    }
+
+    return 'string';
+}
+
+function buildPrompt2FallbackFromCsv(string $absolutePath, int $maxRows = 200): string {
+    if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        return '';
+    }
+
+    $header = [];
+    $rows = [];
+    $file = new SplFileObject($absolutePath, 'r');
+    while (!$file->eof()) {
+        $row = $file->fgetcsv();
+        if ($row === false || $row === [null]) {
+            continue;
+        }
+
+        $normalized = array_map(static fn($v) => trim((string)$v), $row);
+        if (empty($header)) {
+            $header = $normalized;
+            continue;
+        }
+
+        $rows[] = $normalized;
+        if (count($rows) >= $maxRows) {
+            break;
+        }
+    }
+
+    if (empty($header)) {
+        return '';
+    }
+
+    $lines = [];
+    $lines[] = 'Field schema and parsing instructions';
+    $lines[] = 'Use this section as operational parsing guidance for future dashboard generations.';
+
+    foreach ($header as $idx => $columnName) {
+        $columnValues = [];
+        foreach ($rows as $row) {
+            $columnValues[] = (string)($row[$idx] ?? '');
+        }
+
+        $type = detectLikelyType($columnValues);
+        $examples = array_values(array_unique(array_filter(array_map(static fn($v) => trim((string)$v), $columnValues), static fn($v) => $v !== '')));
+        $examples = array_slice($examples, 0, 3);
+        $exampleText = empty($examples) ? 'N/A' : implode(' | ', $examples);
+
+        $parseRule = 'Trim whitespace and preserve source value.';
+        $dateRule = 'N/A';
+        $numericRule = 'N/A';
+        if ($type === 'number') {
+            $parseRule = 'Convert to numeric type after trimming and removing thousand separators.';
+            $numericRule = 'Replace comma decimal separators when needed and cast to decimal.';
+        } elseif ($type === 'date') {
+            $parseRule = 'Parse date using a deterministic parser and store as ISO-8601 when possible.';
+            $dateRule = 'Detect input format explicitly before conversion; avoid locale ambiguity.';
+        } elseif ($type === 'boolean') {
+            $parseRule = 'Map accepted tokens to boolean: true/false, yes/no, 1/0.';
+        }
+
+        $lines[] = '';
+        $lines[] = 'Field: ' . ($columnName !== '' ? $columnName : ('column_' . ($idx + 1)));
+        $lines[] = 'Business meaning: Unknown - requires business confirmation';
+        $lines[] = 'Observed data type: ' . $type;
+        $lines[] = 'Example values: ' . $exampleText;
+        $lines[] = 'Parsing rule: ' . $parseRule;
+        $lines[] = 'Date parsing format: ' . $dateRule;
+        $lines[] = 'Numeric normalization rule: ' . $numericRule;
+        $lines[] = 'Validation checks: Non-null checks when required, domain checks, and duplicate checks.';
+    }
+
+    return implode("\n", $lines);
 }
 
 function parseAutofillResponse(string $text): array {
@@ -294,6 +468,7 @@ $message = '';
 $uploadId = (int)($_GET['id'] ?? $_POST['upload_id'] ?? 0);
 $record = null;
 $aiProfiles = [];
+$uploadClauseAccepted = false;
 $flow = (string)($_GET['flow'] ?? $_POST['flow'] ?? '');
 if ($flow !== 'ai' && $flow !== 'manual') {
     $flow = '';
@@ -357,6 +532,8 @@ try {
     }
 
     mdashEnsureAiDbTable($pdo);
+    ensureOptionsTable($pdo);
+    $uploadClauseAccepted = hasAcceptedUploadClause($pdo, (int)$user['id']);
 
     $aiProfilesStmt = $pdo->prepare(
         'SELECT a.*
@@ -374,6 +551,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     $action = (string)($_POST['action'] ?? '');
 
     if ($action === 'upload_file') {
+        $acceptUploadPolicy = (int)($_POST['accept_upload_policy'] ?? 0) === 1;
+        if ($acceptUploadPolicy) {
+            saveUploadClauseAcceptance($pdo, (int)$user['id'], (string)($user['username'] ?? 'user'));
+            $uploadClauseAccepted = true;
+        }
+
         if (empty($_FILES['file']['name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
             $message = 'Select a valid file to upload.';
         } else {
@@ -484,8 +667,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
             $prompt = buildUploadAutofillPrompt($uploadRecord, $datasetContent);
             $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
             $parsed = parseAutofillResponse($generatedText);
+            $prompt2Final = trim((string)$parsed['prompt_2']);
 
-            if (utf8Length($parsed['title']) > 16000000 || utf8Length($parsed['long_title']) > 16000000 || utf8Length($parsed['prompt_1']) > 16000000 || utf8Length($parsed['prompt_2']) > 16000000) {
+            if (!prompt2LooksStructural($prompt2Final)) {
+                $fallbackPrompt2 = buildPrompt2FallbackFromCsv($absolutePath, 200);
+                if ($fallbackPrompt2 !== '') {
+                    $prompt2Final = trim($prompt2Final) !== ''
+                        ? (trim($prompt2Final) . "\n\n" . $fallbackPrompt2)
+                        : $fallbackPrompt2;
+                }
+            }
+
+            if (utf8Length($parsed['title']) > 16000000 || utf8Length($parsed['long_title']) > 16000000 || utf8Length($parsed['prompt_1']) > 16000000 || utf8Length($prompt2Final) > 16000000) {
                 throw new RuntimeException('AI output is too long for upload fields.');
             }
 
@@ -496,7 +689,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
                 $parsed['title'],
                 $parsed['long_title'],
                 $parsed['prompt_1'],
-                $parsed['prompt_2'],
+                $prompt2Final,
                 defaultDataDiscoveryPrompt(),
                 $uploadId,
                 (int)$user['id'],
@@ -509,7 +702,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
                     'description' => $parsed['title'],
                     'long_description' => $parsed['long_title'],
                     'prompt_1' => $parsed['prompt_1'],
-                    'prompt_2' => $parsed['prompt_2'],
+                    'prompt_2' => $prompt2Final,
                 ],
                 'generated_text' => $parsed['raw_text'],
             ]);
@@ -577,6 +770,7 @@ if ($record) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload file</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
@@ -611,6 +805,14 @@ if ($record) {
                         <div id="progressText" class="progress-text">0%</div>
                     </div>
                     <button type="submit">Upload file</button>
+
+                    <div class="upload-policy-warning">
+                        Warning: Uploaded data may be transmitted to a private server for AI processing. Review your internal company policies before uploading sensitive or regulated data.
+                    </div>
+                    <label class="upload-policy-check" for="accept_upload_policy">
+                        <input type="checkbox" id="accept_upload_policy" name="accept_upload_policy" value="1"<?php echo $uploadClauseAccepted ? ' checked' : ''; ?>>
+                        I acknowledge and accept this data upload clause.
+                    </label>
                 </form>
             </div>
         <?php else: ?>
@@ -855,3 +1057,4 @@ if ($record) {
     </script>
 </body>
 </html>
+

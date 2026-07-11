@@ -48,6 +48,7 @@ $user = $me;
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
     <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
@@ -60,10 +61,11 @@ $user = $me;
 
         .admin-sidebar,
         .admin-main {
-            background: #fff;
-            border: 1px solid var(--border);
+            background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
+            border: 1px solid var(--border-strong);
             border-radius: 12px;
             padding: 14px;
+            box-shadow: var(--shadow-soft);
         }
 
         .admin-title {
@@ -96,14 +98,15 @@ $user = $me;
 
         .table-list button {
             text-align: left;
-            background: #f8fafc;
+            background: #f8fbff;
             color: #0f172a;
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
         }
 
         .table-list button.active {
-            background: #dbeafe;
-            border-color: #93c5fd;
+            background: linear-gradient(180deg, #e8efff 0%, #dce8ff 100%);
+            border-color: #99b1ff;
             color: #1e40af;
         }
 
@@ -115,16 +118,18 @@ $user = $me;
 
         .admin-grid-wrap {
             min-height: 280px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-strong);
             border-radius: 10px;
             overflow: hidden;
+            background: #fff;
         }
 
         .schema-wrap {
             margin-top: 10px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-strong);
             border-radius: 10px;
             overflow: hidden;
+            background: #fff;
         }
 
         .schema-wrap table {
@@ -142,10 +147,10 @@ $user = $me;
 
         .create-row-panel {
             margin: 10px 0;
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-strong);
             border-radius: 10px;
             padding: 10px;
-            background: #f8fafc;
+            background: linear-gradient(180deg, #f9fbff 0%, #f2f7ff 100%);
         }
 
         .create-row-grid {
@@ -764,3 +769,4 @@ $user = $me;
     </script>
 </body>
 </html>
+

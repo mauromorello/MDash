@@ -246,7 +246,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard builder</title>
-    <link rel="stylesheet" href="assets/app.css">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
@@ -371,3 +372,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     </script>
 </body>
 </html>
+

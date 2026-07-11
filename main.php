@@ -115,6 +115,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
@@ -122,8 +123,10 @@ try {
 
     <div class="main-home-content">
         <div class="page main-home-panel">
-            <h1>Welcome</h1>
-            <p>Select a section to continue your workflow.</p>
+            <div class="page-hero">
+                <h1>Welcome</h1>
+                <p>Select a section to continue your workflow.</p>
+            </div>
 
             <div class="main-sections-grid">
                 <div class="main-section-card">
@@ -218,3 +221,4 @@ try {
     </script>
 </body>
 </html>
+
