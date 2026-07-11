@@ -4,7 +4,7 @@ MDash is a PHP + MySQL web application for building AI-generated dashboards from
 
 The project provides:
 - authentication and role-aware access (`user`, `admin`);
-- upload and metadata management for data files;
+- upload with progress, AI/manual metadata compilation, and data file management;
 - template and makeup profile management;
 - dashboard definition, prompt composition, and AI generation (Gemini/OpenRouter);
 - AI profile management with owner-only connection tests and diagnostics;
@@ -19,8 +19,10 @@ The project provides:
 - Logout is available from all main pages.
 
 ### 2. Data source management
-- `upload.php` uploads a file and stores it under `uploads/<id>/filename.csv`.
-- Upload metadata can be completed/edited in `upload.php` and `edit_upload.php`.
+- `upload.php` uploads a file with progress bar and then lets the user choose:
+  - AI mode: one-shot AI analysis of the full file to auto-fill fields
+  - Manual mode: direct manual compilation form
+- `upload.php` and `edit_upload.php` both allow manual edits after AI output and include first-10-rows data preview.
 - `database_list.php` lists user-owned uploads and public uploads.
 
 ### 3. Templates management
@@ -132,11 +134,10 @@ description MEDIUMTEXT NOT NULL,
 tags TEXT NOT NULL,
 long_description MEDIUMTEXT NOT NULL,
 prompt_1 MEDIUMTEXT NOT NULL,
+data_discovery_prompt MEDIUMTEXT NOT NULL,
 prompt_2 MEDIUMTEXT NOT NULL,
 id_owner INT NOT NULL,
 is_public TINYINT(1) NOT NULL DEFAULT 0,
-AI_1 MEDIUMTEXT NOT NULL,
-AI_2 MEDIUMTEXT NOT NULL,
 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ```
 
@@ -287,4 +288,5 @@ Note: generation now uses API keys stored in `ai_db.api_key` per profile.
 - IDs for `results.id` and `makeup.id_makeup` currently use `MAX(id)+1` strategy.
 - Ownership checks are enforced for mutable actions (edit/delete/hide/upload-thumbnail).
 - Supported AI providers at runtime are currently `gemini` and `openrouter`.
+
 

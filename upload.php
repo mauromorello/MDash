@@ -8,7 +8,7 @@ if (empty($_COOKIE['mdash_user'])) {
 
 require_once __DIR__ . '/ai_shared.php';
 
-function sendJson($success, $message, $uploadId = 0): void {
+function sendJson(bool $success, string $message, int $uploadId = 0): void {
     header('Content-Type: application/json');
     echo json_encode([
         'success' => $success,
@@ -18,7 +18,16 @@ function sendJson($success, $message, $uploadId = 0): void {
     exit;
 }
 
-function getUserFromSessionOrCookie() {
+function sendAiJson(bool $success, string $message, array $payload = []): void {
+    header('Content-Type: application/json');
+    echo json_encode(array_merge([
+        'success' => $success,
+        'message' => $message,
+    ], $payload));
+    exit;
+}
+
+function getUserFromSessionOrCookie(): ?array {
     if (!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) {
         return [
             'id' => (int)$_SESSION['user_id'],
@@ -43,7 +52,7 @@ function getUserFromSessionOrCookie() {
     return null;
 }
 
-function h($value) {
+function h($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
@@ -51,41 +60,16 @@ function utf8Length(string $value): int {
     return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
 }
 
-function sendAiJson(bool $success, string $message, string $generatedText = ''): void {
-    header('Content-Type: application/json');
-    echo json_encode([
-        'success' => $success,
-        'message' => $message,
-        'generated_text' => $generatedText,
-    ]);
-    exit;
+function defaultDataDiscoveryPrompt(): string {
+    return "You are a senior data analyst.\n"
+        . "Analyze the full dataset and produce a robust schema and parsing strategy for future dashboards.\n"
+        . "Focus especially on date formats and numeric normalization rules.\n"
+        . "Return plain text only (no markdown fences).";
 }
 
-function readCsvSampleRows(string $absolutePath, int $maxRows = 10): array {
+function readCsvPreviewRows(string $absolutePath, int $maxRows = 10): array {
     if (!is_file($absolutePath) || !is_readable($absolutePath)) {
         throw new RuntimeException('Uploaded file is not readable.');
-    }
-
-    $rawLines = [];
-    $stream = fopen($absolutePath, 'rb');
-    if ($stream !== false) {
-        while (!feof($stream) && count($rawLines) < ($maxRows + 1)) {
-            $line = fgets($stream);
-            if ($line === false) {
-                break;
-            }
-
-            $line = rtrim($line, "\r\n");
-            if (count($rawLines) === 0) {
-                $line = preg_replace('/^\xEF\xBB\xBF/', '', $line) ?? $line;
-            }
-            if ($line === '') {
-                continue;
-            }
-
-            $rawLines[] = $line;
-        }
-        fclose($stream);
     }
 
     $rows = [];
@@ -113,58 +97,76 @@ function readCsvSampleRows(string $absolutePath, int $maxRows = 10): array {
     return [
         'header' => $header,
         'rows' => $rows,
-        'raw_lines' => $rawLines,
     ];
 }
 
-function defaultDataDiscoveryPrompt(): string {
-    return "You are a senior data analyst.\n"
-        . "Analyze the CSV sample and produce a complete and practical data scheme.\n"
-        . "Return plain text only (no markdown fences).\n\n"
-        . "Required output sections:\n"
-        . "1) Dataset overview\n"
-        . "2) Fields\n"
-        . "   For each field include:\n"
-        . "   - Field\n"
-        . "   - Meaning\n"
-        . "   - Observed type (string/number/date/boolean/mixed)\n"
-        . "   - Example values (2-3)\n"
-        . "   - Data quality notes (missing values, anomalies, duplicates hints)\n"
-        . "3) Suggested checks\n"
-        . "   Add concrete validation checks that should be run on this dataset.\n\n"
-        . "Use the CSV sample below to infer structure and quality details.\n"
-        . "{{CSV_SAMPLE}}";
+function readDatasetContent(string $absolutePath): string {
+    if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        throw new RuntimeException('Uploaded file is not readable.');
+    }
+
+    $content = file_get_contents($absolutePath);
+    if ($content === false || trim($content) === '') {
+        throw new RuntimeException('Uploaded file is empty or unreadable.');
+    }
+
+    $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
+
+    return $content;
 }
 
-function buildDataSchemePrompt(array $uploadRecord, array $sample, string $title, string $longDescription, string $tableDescription, string $dataDiscoveryPrompt): string {
+function buildUploadAutofillPrompt(array $uploadRecord, string $datasetContent): string {
     $fileName = (string)($uploadRecord['filename'] ?? 'data.csv');
-    $description = trim($title);
-    $tags = trim((string)($uploadRecord['tags'] ?? ''));
-    $longDescription = trim($longDescription);
-    $tableDescription = trim($tableDescription);
-    $dataDiscoveryPrompt = trim($dataDiscoveryPrompt);
-    $rawLines = $sample['raw_lines'] ?? [];
-    $sampleText = implode("\n", $rawLines);
-    $promptTemplate = $dataDiscoveryPrompt !== '' ? $dataDiscoveryPrompt : defaultDataDiscoveryPrompt();
-    if (!str_contains($promptTemplate, '{{CSV_SAMPLE}}')) {
-        $promptTemplate .= "\n\nCSV sample:\n{{CSV_SAMPLE}}";
+
+    return "Sei un data analyst senior.\n"
+        . "Analizza TUTTO il file allegato e compila i campi richiesti.\n"
+        . "Rispondi in testo semplice e in formato rigidamente interpretabile, senza markdown.\n"
+        . "Usa ESATTAMENTE queste chiavi, una per riga:\n"
+        . "Title: <titolo breve>\n"
+        . "Long title: <descrizione estesa>\n"
+        . "Prompt 1: <che cosa e la tabella e a cosa serve>\n"
+        . "Prompt 2: <analisi dettagliata di ogni campo con istruzioni per parsing successivi, con forte focus su parsing corretto di date e numeri>\n\n"
+        . "File name: {$fileName}\n"
+        . "Dataset completo:\n"
+        . $datasetContent;
+}
+
+function parseAutofillResponse(string $text): array {
+    $clean = trim(preg_replace('/^```(?:text|markdown)?\s*|\s*```$/i', '', $text) ?? $text);
+
+    $pick = static function (string $pattern) use ($clean): string {
+        if (preg_match($pattern, $clean, $matches)) {
+            return trim((string)$matches[1]);
+        }
+        return '';
+    };
+
+    $title = $pick('/^\s*Title\s*:\s*(.*?)\s*(?=^\s*Long\s*title\s*:|\z)/ims');
+    $longTitle = $pick('/^\s*Long\s*title\s*:\s*(.*?)\s*(?=^\s*Prompt\s*1\s*:|\z)/ims');
+    $prompt1 = $pick('/^\s*Prompt\s*1\s*:\s*(.*?)\s*(?=^\s*Prompt\s*2\s*:|\z)/ims');
+    $prompt2 = $pick('/^\s*Prompt\s*2\s*:\s*(.*?)\s*$/ims');
+
+    if ($title === '' || $longTitle === '' || $prompt1 === '' || $prompt2 === '') {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $clean) ?: []), static fn($v) => $v !== ''));
+        if (count($lines) >= 4) {
+            $title = $title !== '' ? $title : preg_replace('/^Title\s*:\s*/i', '', $lines[0]);
+            $longTitle = $longTitle !== '' ? $longTitle : preg_replace('/^Long\s*title\s*:\s*/i', '', $lines[1]);
+            $prompt1 = $prompt1 !== '' ? $prompt1 : preg_replace('/^Prompt\s*1\s*:\s*/i', '', $lines[2]);
+            $prompt2 = $prompt2 !== '' ? $prompt2 : preg_replace('/^Prompt\s*2\s*:\s*/i', '', implode("\n", array_slice($lines, 3)));
+        }
     }
 
-    $context = "File name: {$fileName}\n";
-    if ($description !== '') {
-        $context .= "Title: {$description}\n";
-    }
-    if ($longDescription !== '') {
-        $context .= "Long description: {$longDescription}\n";
-    }
-    if ($tableDescription !== '') {
-        $context .= "Table description: {$tableDescription}\n";
-    }
-    if ($tags !== '') {
-        $context .= "Tags: {$tags}\n";
+    if ($title === '' || $prompt1 === '' || $prompt2 === '') {
+        throw new RuntimeException('AI response is not in the expected structured format.');
     }
 
-    return trim($context) . "\n\n" . str_replace('{{CSV_SAMPLE}}', $sampleText, $promptTemplate);
+    return [
+        'title' => trim($title),
+        'long_title' => trim($longTitle),
+        'prompt_1' => trim($prompt1),
+        'prompt_2' => trim($prompt2),
+        'raw_text' => $clean,
+    ];
 }
 
 function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
@@ -209,7 +211,7 @@ function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
                     'content' => $prompt,
                 ],
             ],
-            'temperature' => 0.2,
+            'temperature' => 0.1,
         ];
         $baseUrl = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
         $headers[] = 'Authorization: Bearer ' . $apiKey;
@@ -225,7 +227,7 @@ function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
                 ],
             ],
             'generationConfig' => [
-                'temperature' => 0.2,
+                'temperature' => 0.1,
             ],
         ];
         $headers[] = 'X-goog-api-key: ' . $apiKey;
@@ -237,7 +239,7 @@ function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => 90,
+        CURLOPT_TIMEOUT => 120,
     ]);
 
     $response = curl_exec($ch);
@@ -272,7 +274,7 @@ function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
         throw new RuntimeException('AI returned empty content.');
     }
 
-    return preg_replace('/^```(?:text|markdown)?\s*|\s*```$/i', '', $text) ?? $text;
+    return $text;
 }
 
 $user = getUserFromSessionOrCookie();
@@ -288,11 +290,14 @@ $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 $pdo = null;
 $dbError = '';
-$uploadId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
-$step = 'upload';
 $message = '';
+$uploadId = (int)($_GET['id'] ?? $_POST['upload_id'] ?? 0);
 $record = null;
 $aiProfiles = [];
+$flow = (string)($_GET['flow'] ?? $_POST['flow'] ?? '');
+if ($flow !== 'ai' && $flow !== 'manual') {
+    $flow = '';
+}
 
 try {
     $pdo = new PDO(
@@ -310,16 +315,14 @@ try {
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             path VARCHAR(255) NOT NULL,
             filename VARCHAR(255) NOT NULL,
-            description TEXT NOT NULL,
-            tags VARCHAR(255) NOT NULL,
-            long_description TEXT NOT NULL,
-            prompt_1 TEXT NOT NULL,
-            data_discovery_prompt TEXT NOT NULL,
-            prompt_2 TEXT NOT NULL,
+            description MEDIUMTEXT NOT NULL,
+            tags TEXT NOT NULL,
+            long_description MEDIUMTEXT NOT NULL,
+            prompt_1 MEDIUMTEXT NOT NULL,
+            data_discovery_prompt MEDIUMTEXT NOT NULL,
+            prompt_2 MEDIUMTEXT NOT NULL,
             id_owner INT NOT NULL,
             is_public TINYINT(1) NOT NULL DEFAULT 0,
-            AI_1 TEXT NOT NULL,
-            AI_2 TEXT NOT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
@@ -327,23 +330,30 @@ try {
     $tableExists = $pdo->query("SHOW TABLES LIKE 'uploads'")->fetchColumn();
     if ($tableExists) {
         $idColumn = $pdo->query("SHOW COLUMNS FROM uploads LIKE 'id'")->fetch(PDO::FETCH_ASSOC);
-        if ($idColumn && stripos((string)$idColumn['Extra'], 'auto_increment') === false) {
+        if ($idColumn && stripos((string)($idColumn['Extra'] ?? ''), 'auto_increment') === false) {
             $pdo->exec("ALTER TABLE uploads MODIFY COLUMN id INT UNSIGNED NOT NULL AUTO_INCREMENT");
         }
 
-        // Ensure long textual fields can store rich prompts without truncation errors.
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN description MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN tags TEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN long_description MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN prompt_1 MEDIUMTEXT NOT NULL");
+
         $hasDiscoveryPromptColumn = $pdo->query("SHOW COLUMNS FROM uploads LIKE 'data_discovery_prompt'")->fetch(PDO::FETCH_ASSOC);
         if (!$hasDiscoveryPromptColumn) {
             $pdo->exec("ALTER TABLE uploads ADD COLUMN data_discovery_prompt MEDIUMTEXT NOT NULL AFTER prompt_1");
         }
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN data_discovery_prompt MEDIUMTEXT NOT NULL");
         $pdo->exec("ALTER TABLE uploads MODIFY COLUMN prompt_2 MEDIUMTEXT NOT NULL");
-        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_1 MEDIUMTEXT NOT NULL");
-        $pdo->exec("ALTER TABLE uploads MODIFY COLUMN AI_2 MEDIUMTEXT NOT NULL");
+
+        $legacyAi1 = $pdo->query("SHOW COLUMNS FROM uploads LIKE 'AI_1'")->fetch(PDO::FETCH_ASSOC);
+        if ($legacyAi1) {
+            $pdo->exec("ALTER TABLE uploads DROP COLUMN AI_1");
+        }
+        $legacyAi2 = $pdo->query("SHOW COLUMNS FROM uploads LIKE 'AI_2'")->fetch(PDO::FETCH_ASSOC);
+        if ($legacyAi2) {
+            $pdo->exec("ALTER TABLE uploads DROP COLUMN AI_2");
+        }
     }
 
     mdashEnsureAiDbTable($pdo);
@@ -356,25 +366,24 @@ try {
     );
     $aiProfilesStmt->execute(['user_id' => (int)$user['id']]);
     $aiProfiles = $aiProfilesStmt->fetchAll();
-} catch (PDOException $e) {
+} catch (Throwable $e) {
     $dbError = $e->getMessage();
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
+    $action = (string)($_POST['action'] ?? '');
 
     if ($action === 'upload_file') {
-        if (!$pdo) {
-            $message = 'Unable to connect to database: ' . h($dbError);
-        } elseif (empty($_FILES['file']['name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        if (empty($_FILES['file']['name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
             $message = 'Select a valid file to upload.';
         } else {
             $originalName = (string)($_FILES['file']['name'] ?? '');
             $normalizedName = str_replace('\\', '/', str_replace("\0", '', $originalName));
             $fileName = basename($normalizedName);
             if ($fileName === '' || $fileName === '.' || $fileName === '..') {
-                $fileName = 'file';
+                $fileName = 'file.csv';
             }
+
             $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0777, true);
@@ -382,7 +391,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
                 $stmt = $pdo->prepare(
-                    'INSERT INTO uploads (path, filename, description, tags, long_description, prompt_1, data_discovery_prompt, prompt_2, id_owner, is_public, AI_1, AI_2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' 
+                    'INSERT INTO uploads (path, filename, description, tags, long_description, prompt_1, data_discovery_prompt, prompt_2, id_owner, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $stmt->execute([
                     '',
@@ -391,113 +400,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     '',
                     '',
                     '',
-                    '',
+                    defaultDataDiscoveryPrompt(),
                     '',
                     (int)$user['id'],
                     0,
-                    '',
-                    '',
                 ]);
 
-                $uploadId = (int)$pdo->lastInsertId();
-                $recordDir = $uploadDir . DIRECTORY_SEPARATOR . $uploadId;
+                $newUploadId = (int)$pdo->lastInsertId();
+                $recordDir = $uploadDir . DIRECTORY_SEPARATOR . $newUploadId;
                 if (!is_dir($recordDir)) {
                     mkdir($recordDir, 0777, true);
                 }
 
                 $targetPath = $recordDir . DIRECTORY_SEPARATOR . $fileName;
                 if (move_uploaded_file($_FILES['file']['tmp_name'], $targetPath)) {
-                    $relativePath = 'uploads/' . $uploadId . '/' . $fileName;
+                    $relativePath = 'uploads/' . $newUploadId . '/' . $fileName;
                     $updateStmt = $pdo->prepare('UPDATE uploads SET path = ? WHERE id = ?');
-                    $updateStmt->execute([$relativePath, $uploadId]);
-                    $step = 'finalize';
-                    $message = 'File uploaded successfully. Complete the required fields.';
-                    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-                        sendJson(true, $message, $uploadId);
+                    $updateStmt->execute([$relativePath, $newUploadId]);
+                    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                        sendJson(true, 'File uploaded successfully.', $newUploadId);
                     }
+                    $uploadId = $newUploadId;
+                    $message = 'File uploaded successfully.';
                 } else {
                     $deleteStmt = $pdo->prepare('DELETE FROM uploads WHERE id = ?');
-                    $deleteStmt->execute([$uploadId]);
+                    $deleteStmt->execute([$newUploadId]);
                     $message = 'The file was not saved. Please try again.';
-                    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                         sendJson(false, $message);
                     }
                 }
-            } catch (PDOException $e) {
+            } catch (Throwable $e) {
                 $message = 'Error while saving file: ' . $e->getMessage();
-                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                     sendJson(false, $message);
                 }
             }
         }
     }
 
-    if ($action === 'save_metadata' && $pdo) {
-        $uploadId = (int)($_POST['upload_id'] ?? 0);
-        $prompt1 = trim((string)($_POST['prompt_1'] ?? ''));
-        $dataDiscoveryPrompt = trim((string)($_POST['data_discovery_prompt'] ?? ''));
-        $prompt2 = trim((string)($_POST['prompt_2'] ?? ''));
-        $description = trim((string)($_POST['description'] ?? ''));
-        $longDescription = trim((string)($_POST['long_description'] ?? ''));
-        $isPublic = isset($_POST['is_public']) ? 1 : 0;
-        $ai1 = trim((string)($_POST['AI_1'] ?? ''));
-        $ai2 = trim((string)($_POST['AI_2'] ?? ''));
-        $tags = '';
-
-        if ($uploadId > 0) {
-            $existingStmt = $pdo->prepare('SELECT tags FROM uploads WHERE id = ? AND id_owner = ? LIMIT 1');
-            $existingStmt->execute([$uploadId, (int)$user['id']]);
-            $existing = $existingStmt->fetch();
-            if ($existing) {
-                $tags = trim((string)($existing['tags'] ?? ''));
-            }
-        }
-
-        if (utf8Length($description) > 16000000 || utf8Length($tags) > 65000 || utf8Length($longDescription) > 16000000 || utf8Length($prompt1) > 16000000 || utf8Length($dataDiscoveryPrompt) > 16000000 || utf8Length($prompt2) > 16000000) {
-            $message = 'Some fields are too long. Reduce text and try again.';
-        }
-
-        if ($message === '' && $uploadId > 0) {
-            try {
-                $stmt = $pdo->prepare(
-                    'UPDATE uploads SET description = ?, tags = ?, long_description = ?, prompt_1 = ?, data_discovery_prompt = ?, prompt_2 = ?, AI_1 = ?, AI_2 = ?, id_owner = ?, is_public = ? WHERE id = ? AND id_owner = ?'
-                );
-                $stmt->execute([
-                    $description,
-                    $tags,
-                    $longDescription,
-                    $prompt1,
-                    $dataDiscoveryPrompt,
-                    $prompt2,
-                    $ai1,
-                    $ai2,
-                    (int)$user['id'],
-                    $isPublic,
-                    $uploadId,
-                    (int)$user['id'],
-                ]);
-                header('Location: main.php');
-                exit;
-            } catch (PDOException $e) {
-                $message = 'Error while saving metadata: ' . $e->getMessage();
-            }
-        }
-
-        if ($message === '') {
-            $message = 'Unable to complete save.';
-        }
-    }
-
-    if ($action === 'generate_prompt2_ai' && $pdo) {
-        $uploadId = (int)($_POST['upload_id'] ?? 0);
-        $aiId = (int)($_POST['id_ai_db'] ?? 0);
-
+    if ($action === 'generate_upload_ai') {
         try {
+            $uploadId = (int)($_POST['upload_id'] ?? 0);
+            $aiId = (int)($_POST['id_ai_db'] ?? 0);
+
             if ($uploadId <= 0) {
                 throw new RuntimeException('Invalid upload ID.');
             }
             if ($aiId <= 0) {
                 throw new RuntimeException('Select an AI profile first.');
+            }
+
+            if (!isset($_SESSION['upload_ai_called'])) {
+                $_SESSION['upload_ai_called'] = [];
+            }
+            if (!empty($_SESSION['upload_ai_called'][$uploadId])) {
+                throw new RuntimeException('AI analysis for this upload has already been executed once.');
             }
 
             $uploadStmt = $pdo->prepare('SELECT * FROM uploads WHERE id = ? AND id_owner = ? LIMIT 1');
@@ -521,21 +479,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Uploaded file path is missing.');
             }
             $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
-            $sample = readCsvSampleRows($absolutePath, 10);
-            if (empty($sample['raw_lines'])) {
-                throw new RuntimeException('Unable to read sample rows from uploaded file.');
+            $datasetContent = readDatasetContent($absolutePath);
+
+            $prompt = buildUploadAutofillPrompt($uploadRecord, $datasetContent);
+            $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
+            $parsed = parseAutofillResponse($generatedText);
+
+            if (utf8Length($parsed['title']) > 16000000 || utf8Length($parsed['long_title']) > 16000000 || utf8Length($parsed['prompt_1']) > 16000000 || utf8Length($parsed['prompt_2']) > 16000000) {
+                throw new RuntimeException('AI output is too long for upload fields.');
             }
 
-            $title = trim((string)($_POST['description'] ?? (string)($uploadRecord['description'] ?? '')));
-            $longDescription = trim((string)($_POST['long_description'] ?? (string)($uploadRecord['long_description'] ?? '')));
-            $tableDescription = trim((string)($_POST['prompt_1'] ?? (string)($uploadRecord['prompt_1'] ?? '')));
-            $dataDiscoveryPrompt = trim((string)($_POST['data_discovery_prompt'] ?? (string)($uploadRecord['data_discovery_prompt'] ?? '')));
+            $updateStmt = $pdo->prepare(
+                'UPDATE uploads SET description = ?, long_description = ?, prompt_1 = ?, prompt_2 = ?, data_discovery_prompt = ? WHERE id = ? AND id_owner = ?'
+            );
+            $updateStmt->execute([
+                $parsed['title'],
+                $parsed['long_title'],
+                $parsed['prompt_1'],
+                $parsed['prompt_2'],
+                defaultDataDiscoveryPrompt(),
+                $uploadId,
+                (int)$user['id'],
+            ]);
 
-            $prompt = buildDataSchemePrompt($uploadRecord, $sample, $title, $longDescription, $tableDescription, $dataDiscoveryPrompt);
-            $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
-            sendAiJson(true, 'AI schema generated successfully.', $generatedText);
+            $_SESSION['upload_ai_called'][$uploadId] = 1;
+
+            sendAiJson(true, 'AI analysis completed.', [
+                'fields' => [
+                    'description' => $parsed['title'],
+                    'long_description' => $parsed['long_title'],
+                    'prompt_1' => $parsed['prompt_1'],
+                    'prompt_2' => $parsed['prompt_2'],
+                ],
+                'generated_text' => $parsed['raw_text'],
+            ]);
         } catch (Throwable $e) {
             sendAiJson(false, $e->getMessage());
+        }
+    }
+
+    if ($action === 'save_metadata') {
+        $uploadId = (int)($_POST['upload_id'] ?? 0);
+        $description = trim((string)($_POST['description'] ?? ''));
+        $longDescription = trim((string)($_POST['long_description'] ?? ''));
+        $prompt1 = trim((string)($_POST['prompt_1'] ?? ''));
+        $prompt2 = trim((string)($_POST['prompt_2'] ?? ''));
+        $dataDiscoveryPrompt = trim((string)($_POST['data_discovery_prompt'] ?? defaultDataDiscoveryPrompt()));
+        $isPublic = isset($_POST['is_public']) ? 1 : 0;
+
+        if ($description === '' || $prompt1 === '' || $prompt2 === '') {
+            $message = 'Title, Prompt 1 and Prompt 2 are required.';
+        } elseif (utf8Length($description) > 16000000 || utf8Length($longDescription) > 16000000 || utf8Length($prompt1) > 16000000 || utf8Length($prompt2) > 16000000 || utf8Length($dataDiscoveryPrompt) > 16000000) {
+            $message = 'Some fields are too long. Reduce text and try again.';
+        } else {
+            $stmt = $pdo->prepare(
+                'UPDATE uploads SET description = ?, long_description = ?, prompt_1 = ?, data_discovery_prompt = ?, prompt_2 = ?, is_public = ? WHERE id = ? AND id_owner = ?'
+            );
+            $stmt->execute([
+                $description,
+                $longDescription,
+                $prompt1,
+                $dataDiscoveryPrompt,
+                $prompt2,
+                $isPublic,
+                $uploadId,
+                (int)$user['id'],
+            ]);
+
+            header('Location: main.php');
+            exit;
         }
     }
 }
@@ -546,8 +558,17 @@ if ($uploadId > 0 && $pdo) {
     $record = $rowStmt->fetch();
 }
 
+$preview = ['header' => [], 'rows' => []];
 if ($record) {
-    $step = 'finalize';
+    $relativePath = (string)($record['path'] ?? '');
+    if ($relativePath !== '') {
+        $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
+        try {
+            $preview = readCsvPreviewRows($absolutePath, 10);
+        } catch (Throwable $e) {
+            $message = $message !== '' ? $message : $e->getMessage();
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -567,12 +588,16 @@ if ($record) {
             <a href="main.php">Back to home</a>
         </div>
 
-        <?php if ($message): ?>
-            <div class="message error"><?php echo h($message); ?></div>
+        <?php if ($dbError): ?>
+            <div class="message error"><?php echo h($dbError); ?></div>
         <?php endif; ?>
 
-        <?php if ($step === 'upload'): ?>
-            <div class="box">
+        <?php if ($message): ?>
+            <div class="message"><?php echo h($message); ?></div>
+        <?php endif; ?>
+
+        <?php if (!$record): ?>
+            <div class="card">
                 <form id="uploadForm" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="upload_file">
                     <div class="field">
@@ -588,89 +613,110 @@ if ($record) {
                     <button type="submit">Upload file</button>
                 </form>
             </div>
-        <?php endif; ?>
+        <?php else: ?>
+            <div class="card">
+                <h2>Choose insert mode</h2>
+                <p>Upload ID <strong><?php echo h($record['id']); ?></strong>. Decide how to populate fields.</p>
+                <div class="choice-grid">
+                    <a class="btn btn-secondary" href="upload.php?id=<?php echo h($record['id']); ?>&flow=ai">1) Use AI and auto-fill</a>
+                    <a class="btn btn-primary" href="upload.php?id=<?php echo h($record['id']); ?>&flow=manual">2) Manual compile</a>
+                </div>
+            </div>
 
-        <?php if ($step === 'finalize' && $record): ?>
-            <div class="box">
-                <h2>Complete file details</h2>
-                <p>Record created with ID <strong><?php echo h($record['id']); ?></strong>.</p>
-                <form method="post">
-                    <input type="hidden" name="action" value="save_metadata">
-                    <input type="hidden" name="upload_id" value="<?php echo h($record['id']); ?>">
-
-                    <div class="field">
-                        <label for="description">Title</label>
-                        <input type="text" id="description" name="description" value="<?php echo h($record['description'] ?? ''); ?>" placeholder="Dataset title">
-                    </div>
-
-                    <div class="field">
-                        <label for="long_description">Long description</label>
-                        <textarea id="long_description" name="long_description" placeholder="Additional details about the file and its fields"><?php echo h($record['long_description'] ?? ''); ?></textarea>
-                    </div>
-
-                    <div class="field">
-                        <label for="prompt_1">Table description</label>
-                        <textarea id="prompt_1" name="prompt_1" placeholder="Describe the table business meaning and expected structure"><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
-                    </div>
-
-                    <div class="field">
-                        <label for="data_discovery_prompt">Data discovery prompt</label>
-                        <textarea id="data_discovery_prompt" name="data_discovery_prompt" placeholder="Prompt used to guide AI schema analysis"><?php
-                            $savedDiscoveryPrompt = trim((string)($record['data_discovery_prompt'] ?? ''));
-                            echo h($savedDiscoveryPrompt !== '' ? $savedDiscoveryPrompt : defaultDataDiscoveryPrompt());
-                        ?></textarea>
-                    </div>
-
-                    <div class="field">
-                        <label for="id_ai_db">AI profile for analysis</label>
-                        <select id="id_ai_db" name="id_ai_db">
-                            <option value="">Select AI profile</option>
-                            <?php foreach ($aiProfiles as $profile): ?>
-                                <option value="<?php echo h((int)$profile['id']); ?>">#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?> [<?php echo h((string)$profile['provider']); ?> / <?php echo h((string)$profile['model']); ?>]</option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="inline-actions" style="margin-top:8px;">
-                            <button type="button" class="secondary" id="generateDataSchemeBtn">Generate data scheme with AI (first 10 rows)</button>
+            <?php if ($flow !== ''): ?>
+                <?php if ($flow === 'ai'): ?>
+                    <div class="card">
+                        <h3>AI analysis (one shot)</h3>
+                        <p>The AI will be called one time and will auto-fill Title, Long title, Prompt 1 and Prompt 2.</p>
+                        <div class="field">
+                            <label for="id_ai_db">AI profile</label>
+                            <select id="id_ai_db" name="id_ai_db">
+                                <option value="">Select AI profile</option>
+                                <?php foreach ($aiProfiles as $profile): ?>
+                                    <option value="<?php echo h((int)$profile['id']); ?>">#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?> [<?php echo h((string)$profile['provider']); ?> / <?php echo h((string)$profile['model']); ?>]</option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="inline-actions">
+                            <button type="button" class="secondary" id="analyzeUploadAiBtn" data-upload-id="<?php echo h($record['id']); ?>">Analyze with AI</button>
                         </div>
                     </div>
+                <?php endif; ?>
 
-                    <div class="field">
-                        <label for="prompt_2">Data scheme</label>
-                        <textarea id="prompt_2" name="prompt_2" placeholder="Detailed schema generated by AI"><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
-                    </div>
+                <div class="card">
+                    <h3>Data preview (first 10 rows)</h3>
+                    <?php if (!empty($preview['header'])): ?>
+                        <div class="table-wrap preview-table-wrap">
+                            <table class="preview-table">
+                                <thead>
+                                    <tr>
+                                        <?php foreach ($preview['header'] as $col): ?>
+                                            <th><?php echo h($col); ?></th>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($preview['rows'] as $row): ?>
+                                        <tr>
+                                            <?php foreach ($preview['header'] as $index => $col): ?>
+                                                <td><?php echo h($row[$index] ?? ''); ?></td>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty">No rows available for preview.</div>
+                    <?php endif; ?>
+                </div>
 
-                    <div class="field">
-                        <label for="AI_1">Default AI profile 1</label>
-                        <select id="AI_1" name="AI_1">
-                            <option value="">None</option>
-                            <?php foreach ($aiProfiles as $profile): ?>
-                                <?php $profileId = (string)(int)$profile['id']; ?>
-                                <option value="<?php echo h($profileId); ?>"<?php echo ((string)($record['AI_1'] ?? '') === $profileId) ? ' selected' : ''; ?>>#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                <div class="card">
+                    <h3>Compile upload data</h3>
+                    <form method="post">
+                        <input type="hidden" name="action" value="save_metadata">
+                        <input type="hidden" name="upload_id" value="<?php echo h($record['id']); ?>">
+                        <input type="hidden" name="flow" value="<?php echo h($flow); ?>">
 
-                    <div class="field">
-                        <label for="AI_2">Default AI profile 2</label>
-                        <select id="AI_2" name="AI_2">
-                            <option value="">None</option>
-                            <?php foreach ($aiProfiles as $profile): ?>
-                                <?php $profileId = (string)(int)$profile['id']; ?>
-                                <option value="<?php echo h($profileId); ?>"<?php echo ((string)($record['AI_2'] ?? '') === $profileId) ? ' selected' : ''; ?>>#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                        <div class="field">
+                            <label for="description">Title</label>
+                            <input type="text" id="description" name="description" value="<?php echo h($record['description'] ?? ''); ?>" required>
+                        </div>
 
-                    <div class="field" style="margin-top:6px;">
-                        <label style="font-weight:600; display:flex; gap:8px; align-items:center;">
-                            <input type="checkbox" name="is_public" value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' checked' : ''; ?>>
-                            Public dataset
-                        </label>
-                    </div>
+                        <div class="field">
+                            <label for="long_description">Long title</label>
+                            <textarea id="long_description" name="long_description"><?php echo h($record['long_description'] ?? ''); ?></textarea>
+                        </div>
 
-                    <button type="submit">Save and return home</button>
-                </form>
-            </div>
+                        <div class="field">
+                            <label for="prompt_1">Prompt 1: table meaning and usage</label>
+                            <textarea id="prompt_1" name="prompt_1" required><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
+                        </div>
+
+                        <div class="field">
+                            <label for="prompt_2">Prompt 2: detailed field analysis and parsing rules</label>
+                            <textarea id="prompt_2" name="prompt_2" required><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
+                        </div>
+
+                        <div class="field">
+                            <label for="data_discovery_prompt">Data discovery prompt (editable)</label>
+                            <textarea id="data_discovery_prompt" name="data_discovery_prompt"><?php
+                                $savedDiscoveryPrompt = trim((string)($record['data_discovery_prompt'] ?? ''));
+                                echo h($savedDiscoveryPrompt !== '' ? $savedDiscoveryPrompt : defaultDataDiscoveryPrompt());
+                            ?></textarea>
+                        </div>
+
+                        <div class="field" style="margin-top:6px;">
+                            <label style="font-weight:600; display:flex; gap:8px; align-items:center;">
+                                <input type="checkbox" name="is_public" value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' checked' : ''; ?>>
+                                Public dataset
+                            </label>
+                        </div>
+
+                        <button type="submit">Save and return home</button>
+                    </form>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 
@@ -711,21 +757,13 @@ if ($record) {
                             } else {
                                 progressLabel.textContent = result && result.message ? result.message : 'Upload completed.';
                                 progressText.textContent = 'Done';
-                                window.location.reload();
                             }
                         } catch (e) {
                             progressLabel.textContent = 'Invalid response from server.';
                             progressText.textContent = 'Error';
                         }
                     } else {
-                        let serverMessage = 'Upload error.';
-                        try {
-                            const result = JSON.parse(xhr.responseText);
-                            if (result && result.message) {
-                                serverMessage = result.message;
-                            }
-                        } catch (e) {}
-                        progressLabel.textContent = serverMessage;
+                        progressLabel.textContent = 'Upload error.';
                         progressText.textContent = 'Error';
                     }
                 });
@@ -741,55 +779,28 @@ if ($record) {
             });
         }
 
-        const logoutBtn = document.getElementById('logoutBtn');
-        if (logoutBtn) {
-            logoutBtn.addEventListener('click', function () {
-                fetch('_act.php', {
-                    method: 'POST',
-                    body: new URLSearchParams({ action: 'logout' })
-                }).finally(() => {
-                    document.cookie = 'mdash_user=; path=/; max-age=0';
-                    window.location.href = 'index.php';
-                });
-            });
-        }
-
-        const generateDataSchemeBtn = document.getElementById('generateDataSchemeBtn');
-        if (generateDataSchemeBtn) {
-            generateDataSchemeBtn.addEventListener('click', function () {
-                const uploadIdInput = document.querySelector('input[name="upload_id"]');
+        const analyzeUploadAiBtn = document.getElementById('analyzeUploadAiBtn');
+        if (analyzeUploadAiBtn) {
+            analyzeUploadAiBtn.addEventListener('click', function () {
                 const aiSelect = document.getElementById('id_ai_db');
-                const prompt2Field = document.getElementById('prompt_2');
-                const descriptionField = document.getElementById('description');
-                const longDescriptionField = document.getElementById('long_description');
-                const prompt1Field = document.getElementById('prompt_1');
-                const discoveryPromptField = document.getElementById('data_discovery_prompt');
-
-                if (!uploadIdInput || !uploadIdInput.value) {
-                    alert('Upload record not found.');
+                const uploadId = analyzeUploadAiBtn.getAttribute('data-upload-id');
+                if (!uploadId) {
+                    alert('Upload not found.');
                     return;
                 }
                 if (!aiSelect || !aiSelect.value) {
                     alert('Select an AI profile first.');
                     return;
                 }
-                if (!prompt2Field) {
-                    alert('Data scheme field not found.');
-                    return;
-                }
 
-                generateDataSchemeBtn.disabled = true;
-                const oldText = generateDataSchemeBtn.textContent;
-                generateDataSchemeBtn.textContent = 'Reading with AI...';
+                analyzeUploadAiBtn.disabled = true;
+                const oldText = analyzeUploadAiBtn.textContent;
+                analyzeUploadAiBtn.textContent = 'Analyzing full dataset...';
 
                 const payload = new URLSearchParams({
-                    action: 'generate_prompt2_ai',
-                    upload_id: uploadIdInput.value,
-                    id_ai_db: aiSelect.value,
-                    description: descriptionField ? descriptionField.value : '',
-                    long_description: longDescriptionField ? longDescriptionField.value : '',
-                    prompt_1: prompt1Field ? prompt1Field.value : '',
-                    data_discovery_prompt: discoveryPromptField ? discoveryPromptField.value : '',
+                    action: 'generate_upload_ai',
+                    upload_id: uploadId,
+                    id_ai_db: aiSelect.value
                 });
 
                 fetch('upload.php', {
@@ -805,14 +816,39 @@ if ($record) {
                     if (!result || !result.success) {
                         throw new Error((result && result.message) ? result.message : 'AI request failed.');
                     }
-                    prompt2Field.value = result.generated_text || '';
+
+                    if (result.fields) {
+                        const titleInput = document.getElementById('description');
+                        const longTitleInput = document.getElementById('long_description');
+                        const prompt1Input = document.getElementById('prompt_1');
+                        const prompt2Input = document.getElementById('prompt_2');
+
+                        if (titleInput) titleInput.value = result.fields.description || '';
+                        if (longTitleInput) longTitleInput.value = result.fields.long_description || '';
+                        if (prompt1Input) prompt1Input.value = result.fields.prompt_1 || '';
+                        if (prompt2Input) prompt2Input.value = result.fields.prompt_2 || '';
+                    }
+
+                    analyzeUploadAiBtn.textContent = 'AI already executed';
+                    alert('AI analysis completed. You can now review and edit all fields manually before saving.');
                 })
                 .catch(error => {
                     alert(error.message || 'AI request failed.');
-                })
-                .finally(() => {
-                    generateDataSchemeBtn.disabled = false;
-                    generateDataSchemeBtn.textContent = oldText;
+                    analyzeUploadAiBtn.disabled = false;
+                    analyzeUploadAiBtn.textContent = oldText;
+                });
+            });
+        }
+
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', function () {
+                fetch('_act.php', {
+                    method: 'POST',
+                    body: new URLSearchParams({ action: 'logout' })
+                }).finally(() => {
+                    document.cookie = 'mdash_user=; path=/; max-age=0';
+                    window.location.href = 'index.php';
                 });
             });
         }

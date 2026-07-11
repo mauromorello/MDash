@@ -66,12 +66,11 @@ try {
             description TEXT NOT NULL,
             tags VARCHAR(255) NOT NULL,
             long_description TEXT NOT NULL,
-            prompt_1 TEXT NOT NULL,
-            prompt_2 TEXT NOT NULL,
+            prompt_1 MEDIUMTEXT NOT NULL,
+            data_discovery_prompt MEDIUMTEXT NOT NULL,
+            prompt_2 MEDIUMTEXT NOT NULL,
             id_owner INT NOT NULL,
             is_public TINYINT(1) NOT NULL DEFAULT 0,
-            AI_1 TEXT NOT NULL,
-            AI_2 TEXT NOT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
@@ -218,3 +217,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     </script>
 </body>
 </html>
+
