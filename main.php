@@ -123,10 +123,7 @@ try {
 
     <div class="main-home-content">
         <div class="page main-home-panel">
-            <div class="page-hero">
-                <h1>Welcome</h1>
-                <p>Select a section to continue your workflow.</p>
-            </div>
+
 
             <div class="main-sections-grid">
                 <div class="main-section-card">

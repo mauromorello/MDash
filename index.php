@@ -23,7 +23,7 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
     <main class="login-page">
         <section class="login-shell" aria-labelledby="loginTitle">
             <div class="login-logo-box" aria-label="Logo placeholder 400 by 300">
-                <img src="assets/logo.png" alt="MDash logo" width="400" height="300">
+                <img src="assets/MDashLogo.png" alt="MDash logo" width="300" height="300">
             </div>
 
             <div class="login-credentials-box">
