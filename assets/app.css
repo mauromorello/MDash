@@ -537,6 +537,60 @@ button.secondary { background: linear-gradient(180deg, #eef2f8 0%, #cfd8e8 100%)
   display: block;
 }
 
+.main-ready-tooltip {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.2) 0%, rgba(2, 6, 23, 0.9) 58%, rgba(2, 6, 23, 0.96) 100%);
+  color: #f8fafc;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.main-ready-thumb-wrap:hover .main-ready-tooltip,
+.main-ready-thumb-wrap:focus-within .main-ready-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.main-ready-tooltip-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.26);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+
+.main-ready-tooltip-row {
+  display: grid;
+  gap: 2px;
+}
+
+.main-ready-tooltip-row span {
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #bfdbfe;
+}
+
+.main-ready-tooltip-row strong {
+  font-size: 0.74rem;
+  line-height: 1.22;
+  font-weight: 600;
+  color: #f8fafc;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .main-ready-edit-btn {
   position: absolute;
   right: 8px;

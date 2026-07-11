@@ -56,6 +56,42 @@ function extractDashboardTitle(array $result): string {
     return 'Dashboard #' . (string)($result['id'] ?? '');
 }
 
+function extractPromptSection(string $finalPrompt, string $sectionName): string {
+    if ($finalPrompt === '') {
+        return '';
+    }
+
+    $pattern = '/\[' . preg_quote($sectionName, '/') . '\]\s*(.+?)(?:\n\[[^\]]+\]|$)/si';
+    if (!preg_match($pattern, $finalPrompt, $matches)) {
+        return '';
+    }
+
+    return trim((string)($matches[1] ?? ''));
+}
+
+function extractLabeledValue(string $text, string $label): string {
+    if ($text === '') {
+        return '';
+    }
+
+    $pattern = '/^' . preg_quote($label, '/') . ':\s*(.+)$/mi';
+    if (!preg_match($pattern, $text, $matches)) {
+        return '';
+    }
+
+    return trim((string)($matches[1] ?? ''));
+}
+
+function cleanSingleLine(string $value): string {
+    if ($value === '') {
+        return '';
+    }
+
+    $firstLine = preg_split('/\R/', $value, 2);
+    $normalized = trim((string)($firstLine[0] ?? $value));
+    return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+}
+
 $dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
@@ -77,8 +113,9 @@ try {
         mdashEnsureResultsAiColumns($pdo);
 
         $stmt = $pdo->prepare(
-                                'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.path, r.thumbnail_path, r.final_prompt, r.n_views, r.n_download, r.n_clone
+                    'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.path, r.thumbnail_path, r.final_prompt, r.ai_title, r.ai_provider, r.ai_model, r.n_views, r.n_download, r.n_clone, u.username AS owner_username
          FROM results r
+         LEFT JOIN users u ON u.id = r.id_owner
          WHERE ((r.id_owner = :user_id AND r.is_hidden = 0) OR (r.is_public = 1 AND r.is_hidden = 0))
            AND COALESCE(TRIM(r.thumbnail_path), "") <> ""
                  ORDER BY r.n_views DESC, r.id DESC
@@ -94,12 +131,53 @@ try {
             continue;
         }
 
+        $ownerLabel = (int)$row['id_owner'] === (int)$user['id']
+            ? 'You'
+            : ((string)($row['owner_username'] ?? '') !== '' ? (string)$row['owner_username'] : ('User #' . (int)$row['id_owner']));
+
+        $finalPrompt = (string)($row['final_prompt'] ?? '');
+        $dataSourceSection = extractPromptSection($finalPrompt, 'Data source');
+        $dataSourceName = cleanSingleLine(extractLabeledValue($dataSourceSection, 'File name'));
+        if ($dataSourceName === '') {
+            $dataSourceName = cleanSingleLine(extractLabeledValue($dataSourceSection, 'Relative file path'));
+        }
+        if ($dataSourceName === '') {
+            $dataSourceName = 'N/A';
+        }
+
+        $description = cleanSingleLine(extractLabeledValue($dataSourceSection, 'Description'));
+        if ($description === '') {
+            $description = cleanSingleLine(extractPromptSection($finalPrompt, 'Dashboard prompt'));
+        }
+        if ($description === '') {
+            $description = 'N/A';
+        }
+
+        $aiTitle = trim((string)($row['ai_title'] ?? ''));
+        $aiProvider = trim((string)($row['ai_provider'] ?? ''));
+        $aiModel = trim((string)($row['ai_model'] ?? ''));
+        $aiUsedParts = [];
+        if ($aiTitle !== '') {
+            $aiUsedParts[] = $aiTitle;
+        }
+        if ($aiProvider !== '' || $aiModel !== '') {
+            $aiUsedParts[] = trim($aiProvider . ($aiModel !== '' ? ' / ' . $aiModel : ''));
+        }
+        $aiUsed = trim(implode(' - ', array_filter($aiUsedParts, static fn($part) => $part !== '')));
+        if ($aiUsed === '') {
+            $aiUsed = 'N/A';
+        }
+
         $readyDashboards[] = [
             'id' => (int)$row['id'],
             'id_owner' => (int)$row['id_owner'],
             'title' => extractDashboardTitle($row),
             'tracked_path' => 'results.php?action=open_result&result_id=' . (int)$row['id'],
             'thumbnail_path' => $thumbnailPath,
+            'creator' => $ownerLabel,
+            'data_source' => $dataSourceName,
+            'ai_used' => $aiUsed,
+            'description' => $description,
             'n_views' => (int)($row['n_views'] ?? 0),
             'n_download' => (int)($row['n_download'] ?? 0),
             'n_clone' => (int)($row['n_clone'] ?? 0),
@@ -187,6 +265,13 @@ try {
                                     <a class="main-ready-thumb-link" href="<?php echo h($dashboard['tracked_path']); ?>" target="_blank" rel="noopener" title="Open dashboard">
                                         <img src="<?php echo h($dashboard['thumbnail_path']); ?>" alt="Thumbnail dashboard <?php echo h((int)$dashboard['id']); ?>" class="main-ready-thumb">
                                     </a>
+                                    <div class="main-ready-tooltip" role="tooltip" aria-label="Dashboard details">
+                                        <div class="main-ready-tooltip-title"><?php echo h($dashboard['title']); ?></div>
+                                        <div class="main-ready-tooltip-row"><span>Creator</span><strong><?php echo h($dashboard['creator']); ?></strong></div>
+                                        <div class="main-ready-tooltip-row"><span>Data</span><strong><?php echo h($dashboard['data_source']); ?></strong></div>
+                                        <div class="main-ready-tooltip-row"><span>AI Used</span><strong><?php echo h($dashboard['ai_used']); ?></strong></div>
+                                        <div class="main-ready-tooltip-row"><span>Description</span><strong><?php echo h($dashboard['description']); ?></strong></div>
+                                    </div>
                                     <?php if ((int)$dashboard['id_owner'] === (int)$user['id']): ?>
                                         <a class="main-ready-edit-btn" href="results.php" title="Edit dashboard">Edit</a>
                                     <?php endif; ?>
