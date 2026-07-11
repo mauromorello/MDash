@@ -1310,3 +1310,6 @@ input.cell-edit {
 .upload-policy-check input[type="checkbox"] {
   margin-top: 2px;
 }
+.upload-submit-btn.is-hidden {
+  display: none;
+}

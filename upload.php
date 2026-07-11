@@ -93,7 +93,7 @@ function saveUploadClauseAcceptance(PDO $pdo, int $userId, string $username): vo
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $stmt = $pdo->prepare(
-        'INSERT INTO options (option_key, option_value, value_type) VALUES (?, ?, ?)\n'
+        'INSERT INTO options (option_key, option_value, value_type) VALUES (?, ?, ?) '
         . 'ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), value_type = VALUES(value_type)'
     );
     $stmt->execute([$optionKey, (string)$payload, 'json']);
@@ -150,6 +150,49 @@ function readDatasetContent(string $absolutePath): string {
     }
 
     $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
+
+    return $content;
+}
+
+function readDatasetContentForAi(string $absolutePath, int $maxDataRows = 1000): string {
+    if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        throw new RuntimeException('Uploaded file is not readable.');
+    }
+
+    $stream = fopen($absolutePath, 'rb');
+    if ($stream === false) {
+        throw new RuntimeException('Unable to open uploaded file.');
+    }
+
+    $rawLines = [];
+    $lineCount = 0;
+    $maxLinesToSend = $maxDataRows + 1; // header + first N rows
+
+    while (!feof($stream)) {
+        $line = fgets($stream);
+        if ($line === false) {
+            break;
+        }
+
+        $lineCount++;
+        if (count($rawLines) < $maxLinesToSend) {
+            $normalized = rtrim($line, "\r\n");
+            if (count($rawLines) === 0) {
+                $normalized = preg_replace('/^\xEF\xBB\xBF/', '', $normalized) ?? $normalized;
+            }
+            $rawLines[] = $normalized;
+        }
+    }
+    fclose($stream);
+
+    if (empty($rawLines)) {
+        throw new RuntimeException('Uploaded file is empty or unreadable.');
+    }
+
+    $content = implode("\n", $rawLines);
+    if ($lineCount > $maxLinesToSend) {
+        $content .= "\n\nNOTE: Dataset truncated for AI analysis. Only header + first {$maxDataRows} data rows are included.";
+    }
 
     return $content;
 }
@@ -551,15 +594,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     $action = (string)($_POST['action'] ?? '');
 
     if ($action === 'upload_file') {
-        $acceptUploadPolicy = (int)($_POST['accept_upload_policy'] ?? 0) === 1;
-        if ($acceptUploadPolicy) {
+        $alreadyAccepted = hasAcceptedUploadClause($pdo, (int)$user['id']);
+        $acceptUploadPolicy = $alreadyAccepted || (int)($_POST['accept_upload_policy'] ?? 0) === 1;
+
+        if (!$acceptUploadPolicy) {
+            $message = 'You must accept the data upload clause before uploading a file.';
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                sendJson(false, $message);
+            }
+        }
+
+        if ($acceptUploadPolicy && !$alreadyAccepted) {
             saveUploadClauseAcceptance($pdo, (int)$user['id'], (string)($user['username'] ?? 'user'));
+            $uploadClauseAccepted = true;
+        } elseif ($alreadyAccepted) {
             $uploadClauseAccepted = true;
         }
 
-        if (empty($_FILES['file']['name']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        if ($message === '' && empty($_FILES['file']['name'])) {
             $message = 'Select a valid file to upload.';
-        } else {
+        }
+
+        if ($message === '' && isset($_FILES['file']['error']) && (int)$_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            $uploadErr = (int)$_FILES['file']['error'];
+            if ($uploadErr === UPLOAD_ERR_INI_SIZE || $uploadErr === UPLOAD_ERR_FORM_SIZE) {
+                $message = 'The selected file is too large for current PHP upload limits. Increase upload_max_filesize and post_max_size.';
+            } elseif ($uploadErr === UPLOAD_ERR_PARTIAL) {
+                $message = 'File upload was interrupted (partial upload). Please retry.';
+            } else {
+                $message = 'Upload failed with error code ' . $uploadErr . '.';
+            }
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                sendJson(false, $message);
+            }
+        }
+
+        if ($message === '') {
             $originalName = (string)($_FILES['file']['name'] ?? '');
             $normalizedName = str_replace('\\', '/', str_replace("\0", '', $originalName));
             $fileName = basename($normalizedName);
@@ -619,6 +689,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
                     sendJson(false, $message);
                 }
             }
+        } else {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                sendJson(false, $message);
+            }
         }
     }
 
@@ -662,7 +736,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
                 throw new RuntimeException('Uploaded file path is missing.');
             }
             $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
-            $datasetContent = readDatasetContent($absolutePath);
+            $datasetContent = readDatasetContentForAi($absolutePath, 1000);
 
             $prompt = buildUploadAutofillPrompt($uploadRecord, $datasetContent);
             $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
@@ -670,7 +744,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
             $prompt2Final = trim((string)$parsed['prompt_2']);
 
             if (!prompt2LooksStructural($prompt2Final)) {
-                $fallbackPrompt2 = buildPrompt2FallbackFromCsv($absolutePath, 200);
+                $fallbackPrompt2 = buildPrompt2FallbackFromCsv($absolutePath, 1000);
                 if ($fallbackPrompt2 !== '') {
                     $prompt2Final = trim($prompt2Final) !== ''
                         ? (trim($prompt2Final) . "\n\n" . $fallbackPrompt2)
@@ -794,6 +868,9 @@ if ($record) {
             <div class="card">
                 <form id="uploadForm" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="upload_file">
+                    <?php if ($uploadClauseAccepted): ?>
+                        <input type="hidden" name="accept_upload_policy" value="1" id="acceptUploadPolicyHidden">
+                    <?php endif; ?>
                     <div class="field">
                         <label for="file">Select file</label>
                         <input type="file" id="file" name="file" required>
@@ -804,13 +881,13 @@ if ($record) {
                         <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
                         <div id="progressText" class="progress-text">0%</div>
                     </div>
-                    <button type="submit">Upload file</button>
+                    <button type="submit" id="uploadSubmitBtn" class="btn btn-primary upload-submit-btn<?php echo $uploadClauseAccepted ? '' : ' is-hidden'; ?>"<?php echo $uploadClauseAccepted ? '' : ' disabled'; ?>>Upload file</button>
 
                     <div class="upload-policy-warning">
                         Warning: Uploaded data may be transmitted to a private server for AI processing. Review your internal company policies before uploading sensitive or regulated data.
                     </div>
                     <label class="upload-policy-check" for="accept_upload_policy">
-                        <input type="checkbox" id="accept_upload_policy" name="accept_upload_policy" value="1"<?php echo $uploadClauseAccepted ? ' checked' : ''; ?>>
+                        <input type="checkbox" id="accept_upload_policy" name="accept_upload_policy" value="1"<?php echo $uploadClauseAccepted ? ' checked disabled' : ''; ?>>
                         I acknowledge and accept this data upload clause.
                     </label>
                 </form>
@@ -928,9 +1005,57 @@ if ($record) {
         const progressFill = document.getElementById('progressFill');
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
+        const uploadSubmitBtn = document.getElementById('uploadSubmitBtn');
+        const acceptUploadPolicyCheckbox = document.getElementById('accept_upload_policy');
+
+        function ensureUploadPolicyHiddenInput() {
+            if (!form) {
+                return;
+            }
+
+            let hidden = document.getElementById('acceptUploadPolicyHidden');
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'accept_upload_policy';
+                hidden.value = '1';
+                hidden.id = 'acceptUploadPolicyHidden';
+                form.appendChild(hidden);
+            }
+        }
+
+        function lockAcceptanceAndEnableUpload() {
+            if (acceptUploadPolicyCheckbox) {
+                acceptUploadPolicyCheckbox.checked = true;
+                acceptUploadPolicyCheckbox.disabled = true;
+            }
+            ensureUploadPolicyHiddenInput();
+            if (uploadSubmitBtn) {
+                uploadSubmitBtn.classList.remove('is-hidden');
+                uploadSubmitBtn.disabled = false;
+            }
+        }
+
+        if (acceptUploadPolicyCheckbox && acceptUploadPolicyCheckbox.checked) {
+            lockAcceptanceAndEnableUpload();
+        }
+
+        if (acceptUploadPolicyCheckbox && !acceptUploadPolicyCheckbox.disabled) {
+            acceptUploadPolicyCheckbox.addEventListener('change', function () {
+                if (acceptUploadPolicyCheckbox.checked) {
+                    lockAcceptanceAndEnableUpload();
+                }
+            });
+        }
 
         if (form) {
             form.addEventListener('submit', function (event) {
+                if (!acceptUploadPolicyCheckbox || !acceptUploadPolicyCheckbox.checked) {
+                    event.preventDefault();
+                    alert('You must accept the data upload clause before uploading files.');
+                    return;
+                }
+
                 event.preventDefault();
                 const fileInput = document.getElementById('file');
                 if (!fileInput || !fileInput.files || !fileInput.files[0]) {
@@ -965,7 +1090,15 @@ if ($record) {
                             progressText.textContent = 'Error';
                         }
                     } else {
-                        progressLabel.textContent = 'Upload error.';
+                        let serverMessage = 'Upload error.';
+                        try {
+                            const parsed = JSON.parse(xhr.responseText);
+                            if (parsed && parsed.message) {
+                                serverMessage = parsed.message;
+                            }
+                        } catch (e) {
+                        }
+                        progressLabel.textContent = serverMessage;
                         progressText.textContent = 'Error';
                     }
                 });
