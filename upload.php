@@ -71,31 +71,23 @@ function ensureOptionsTable(PDO $pdo): void {
     );
 }
 
-function getUploadClauseOptionKey(int $userId): string {
-    return 'upload.data_clause.accepted.user.' . $userId;
-}
+function logUploadClauseAcceptance(PDO $pdo, int $userId, string $username, string $filename): void {
+    try {
+        $token = bin2hex(random_bytes(4));
+    } catch (Throwable $e) {
+        $token = substr((string)md5((string)microtime(true) . '_' . (string)mt_rand()), 0, 8);
+    }
 
-function hasAcceptedUploadClause(PDO $pdo, int $userId): bool {
-    $stmt = $pdo->prepare('SELECT option_value FROM options WHERE option_key = ? LIMIT 1');
-    $stmt->execute([getUploadClauseOptionKey($userId)]);
-    $row = $stmt->fetch();
-
-    return $row !== false && trim((string)($row['option_value'] ?? '')) !== '';
-}
-
-function saveUploadClauseAcceptance(PDO $pdo, int $userId, string $username): void {
-    $optionKey = getUploadClauseOptionKey($userId);
+    $optionKey = 'upload.data_clause.accepted.log.user.' . $userId . '.' . date('YmdHis') . '.' . $token;
     $payload = json_encode([
         'accepted' => 1,
         'user_id' => $userId,
         'username' => $username,
+        'filename' => $filename,
         'accepted_at' => date('Y-m-d H:i:s'),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    $stmt = $pdo->prepare(
-        'INSERT INTO options (option_key, option_value, value_type) VALUES (?, ?, ?) '
-        . 'ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), value_type = VALUES(value_type)'
-    );
+    $stmt = $pdo->prepare('INSERT INTO options (option_key, option_value, value_type) VALUES (?, ?, ?)');
     $stmt->execute([$optionKey, (string)$payload, 'json']);
 }
 
@@ -583,7 +575,6 @@ $message = '';
 $uploadId = (int)($_GET['id'] ?? $_POST['upload_id'] ?? 0);
 $record = null;
 $aiProfiles = [];
-$uploadClauseAccepted = false;
 $uploadAiPromptTemplate = '';
 $flow = (string)($_GET['flow'] ?? $_POST['flow'] ?? '');
 if ($flow !== 'ai' && $flow !== 'manual') {
@@ -649,7 +640,6 @@ try {
 
     mdashEnsureAiDbTable($pdo);
     ensureOptionsTable($pdo);
-    $uploadClauseAccepted = hasAcceptedUploadClause($pdo, (int)$user['id']);
     $uploadAiPromptTemplate = getUploadAiPromptTemplate($pdo, (int)$user['id']);
 
     $aiProfilesStmt = $pdo->prepare(
@@ -685,21 +675,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     }
 
     if ($action === 'upload_file') {
-        $alreadyAccepted = hasAcceptedUploadClause($pdo, (int)$user['id']);
-        $acceptUploadPolicy = $alreadyAccepted || (int)($_POST['accept_upload_policy'] ?? 0) === 1;
+        $acceptUploadPolicy = (int)($_POST['accept_upload_policy'] ?? 0) === 1;
 
         if (!$acceptUploadPolicy) {
             $message = 'You must accept the data upload clause before uploading a file.';
             if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
                 sendJson(false, $message);
             }
-        }
-
-        if ($acceptUploadPolicy && !$alreadyAccepted) {
-            saveUploadClauseAcceptance($pdo, (int)$user['id'], (string)($user['username'] ?? 'user'));
-            $uploadClauseAccepted = true;
-        } elseif ($alreadyAccepted) {
-            $uploadClauseAccepted = true;
         }
 
         if ($message === '' && empty($_FILES['file']['name'])) {
@@ -726,6 +708,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
             $fileName = basename($normalizedName);
             if ($fileName === '' || $fileName === '.' || $fileName === '..') {
                 $fileName = 'file.csv';
+            }
+
+            if ($acceptUploadPolicy) {
+                logUploadClauseAcceptance($pdo, (int)$user['id'], (string)($user['username'] ?? 'user'), $fileName);
             }
 
             $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
@@ -970,9 +956,6 @@ if ($record && $flow === 'ai') {
             <div class="card">
                 <form id="uploadForm" method="post" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="upload_file">
-                    <?php if ($uploadClauseAccepted): ?>
-                        <input type="hidden" name="accept_upload_policy" value="1" id="acceptUploadPolicyHidden">
-                    <?php endif; ?>
                     <div class="field">
                         <label for="file">Select file</label>
                         <input type="file" id="file" name="file" required>
@@ -983,13 +966,13 @@ if ($record && $flow === 'ai') {
                         <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
                         <div id="progressText" class="progress-text">0%</div>
                     </div>
-                    <button type="submit" id="uploadSubmitBtn" class="btn btn-primary upload-submit-btn<?php echo $uploadClauseAccepted ? '' : ' is-hidden'; ?>"<?php echo $uploadClauseAccepted ? '' : ' disabled'; ?>>Upload file</button>
+                    <button type="submit" id="uploadSubmitBtn" class="btn btn-primary upload-submit-btn" disabled>Upload file</button>
 
                     <div class="upload-policy-warning">
                         Warning: Uploaded data may be transmitted to a private server for AI processing. Review your internal company policies before uploading sensitive or regulated data.
                     </div>
                     <label class="upload-policy-check" for="accept_upload_policy">
-                        <input type="checkbox" id="accept_upload_policy" name="accept_upload_policy" value="1"<?php echo $uploadClauseAccepted ? ' checked disabled' : ''; ?>>
+                        <input type="checkbox" id="accept_upload_policy" name="accept_upload_policy" value="1">
                         I acknowledge and accept this data upload clause.
                     </label>
                 </form>
@@ -1135,36 +1118,14 @@ if ($record && $flow === 'ai') {
         const uploadSubmitBtn = document.getElementById('uploadSubmitBtn');
         const acceptUploadPolicyCheckbox = document.getElementById('accept_upload_policy');
 
-        function ensureUploadPolicyHiddenInput() {
-            if (!form) {
-                return;
-            }
-
-            let hidden = document.getElementById('acceptUploadPolicyHidden');
-            if (!hidden) {
-                hidden = document.createElement('input');
-                hidden.type = 'hidden';
-                hidden.name = 'accept_upload_policy';
-                hidden.value = '1';
-                hidden.id = 'acceptUploadPolicyHidden';
-                form.appendChild(hidden);
-            }
-        }
-
         function lockAcceptanceAndEnableUpload() {
             if (acceptUploadPolicyCheckbox) {
                 acceptUploadPolicyCheckbox.checked = true;
                 acceptUploadPolicyCheckbox.disabled = true;
             }
-            ensureUploadPolicyHiddenInput();
             if (uploadSubmitBtn) {
-                uploadSubmitBtn.classList.remove('is-hidden');
                 uploadSubmitBtn.disabled = false;
             }
-        }
-
-        if (acceptUploadPolicyCheckbox && acceptUploadPolicyCheckbox.checked) {
-            lockAcceptanceAndEnableUpload();
         }
 
         if (acceptUploadPolicyCheckbox && !acceptUploadPolicyCheckbox.disabled) {
