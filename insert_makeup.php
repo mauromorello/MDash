@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -127,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Insert Makeup</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
 </head>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
@@ -269,4 +269,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     </script>
 </body>
 </html>
+
 

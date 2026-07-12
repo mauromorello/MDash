@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -49,7 +49,7 @@ $user = $me;
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
     <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
     <style>
@@ -769,4 +769,5 @@ $user = $me;
     </script>
 </body>
 </html>
+
 

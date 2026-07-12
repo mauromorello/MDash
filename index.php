@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_COOKIE['mdash_user'])) {
@@ -13,7 +13,7 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
 </head>
 <body>
     <header class="user-ribbon login-ribbon">
@@ -95,4 +95,5 @@ if ((!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) || !empty($_
     </script>
 </body>
 </html>
+
 

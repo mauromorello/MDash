@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -194,7 +194,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
 </head>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
@@ -278,9 +278,9 @@ try {
                                 </div>
                                 <h3><a class="main-ready-title-link" href="<?php echo h($dashboard['tracked_path']); ?>" target="_blank" rel="noopener"><?php echo h($dashboard['title']); ?></a></h3>
                                 <div class="result-stats-badges main-ready-stats" aria-label="Dashboard stats">
-                                    <span class="result-stat-badge" title="Views">👁️ <?php echo h((int)$dashboard['n_views']); ?></span>
-                                    <span class="result-stat-badge" title="Downloads">⬇️ <?php echo h((int)$dashboard['n_download']); ?></span>
-                                    <span class="result-stat-badge" title="Clones">🧬 <?php echo h((int)$dashboard['n_clone']); ?></span>
+                                    <span class="result-stat-badge" title="Views">ðŸ‘ï¸ <?php echo h((int)$dashboard['n_views']); ?></span>
+                                    <span class="result-stat-badge" title="Downloads">â¬‡ï¸ <?php echo h((int)$dashboard['n_download']); ?></span>
+                                    <span class="result-stat-badge" title="Clones">ðŸ§¬ <?php echo h((int)$dashboard['n_clone']); ?></span>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -303,4 +303,5 @@ try {
     </script>
 </body>
 </html>
+
 

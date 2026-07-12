@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -112,7 +112,7 @@ if (!empty($_GET['created'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard List</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
 </head>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
@@ -245,4 +245,5 @@ if (!empty($_GET['created'])) {
     </script>
 </body>
 </html>
+
 

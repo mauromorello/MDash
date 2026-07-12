@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -505,7 +505,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Results</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material.min.css">
 </head>
@@ -572,19 +572,19 @@ try {
                                     <strong><?php echo h($dashboardTitle); ?></strong>
                                     <div class="meta">#<?php echo h((int)$result['id']); ?></div>
                                     <div class="result-stats-badges" aria-label="Dashboard stats">
-                                        <span class="result-stat-badge" title="Views">👁️ <?php echo h((int)($result['n_views'] ?? 0)); ?></span>
-                                        <span class="result-stat-badge" title="Downloads">⬇️ <?php echo h((int)($result['n_download'] ?? 0)); ?></span>
-                                        <span class="result-stat-badge" title="Clones">🧬 <?php echo h((int)($result['n_clone'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Views">ðŸ‘ï¸ <?php echo h((int)($result['n_views'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Downloads">â¬‡ï¸ <?php echo h((int)($result['n_download'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Clones">ðŸ§¬ <?php echo h((int)($result['n_clone'] ?? 0)); ?></span>
                                     </div>
                                 </td>
                                 <td><?php echo h($ownerLabel); ?></td>
                                 <td>
                                     <div class="result-actions">
-                                        <a class="btn-ghost icon-btn" href="results.php?action=open_result&amp;result_id=<?php echo h((int)$result['id']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">🔗</a>
-                                        <a class="btn-ghost icon-btn" href="results.php?action=download_result&amp;result_id=<?php echo h((int)$result['id']); ?>" title="Download dashboard" aria-label="Download dashboard">⬇️</a>
+                                        <a class="btn-ghost icon-btn" href="results.php?action=open_result&amp;result_id=<?php echo h((int)$result['id']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">ðŸ”—</a>
+                                        <a class="btn-ghost icon-btn" href="results.php?action=download_result&amp;result_id=<?php echo h((int)$result['id']); ?>" title="Download dashboard" aria-label="Download dashboard">â¬‡ï¸</a>
 
                                         <?php if ($isOwner): ?>
-                                            <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste thumbnail" aria-label="Paste thumbnail">📋</button>
+                                            <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste thumbnail" aria-label="Paste thumbnail">ðŸ“‹</button>
                                         <?php endif; ?>
 
                                         <?php if ($isOwner): ?>
@@ -592,20 +592,20 @@ try {
                                                 <input type="hidden" name="action" value="set_public">
                                                 <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
                                                 <input type="hidden" name="public_value" value="<?php echo ((int)$result['is_public'] === 1) ? '0' : '1'; ?>">
-                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>" aria-label="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>"><?php echo ((int)$result['is_public'] === 1) ? '🔓' : '🔒'; ?></button>
+                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>" aria-label="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>"><?php echo ((int)$result['is_public'] === 1) ? 'ðŸ”“' : 'ðŸ”’'; ?></button>
                                             </form>
 
                                             <form method="post">
                                                 <input type="hidden" name="action" value="set_hidden">
                                                 <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
                                                 <input type="hidden" name="hidden_value" value="<?php echo ((int)$result['is_hidden'] === 1) ? '0' : '1'; ?>">
-                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? '👁️' : '🙈'; ?></button>
+                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? 'ðŸ‘ï¸' : 'ðŸ™ˆ'; ?></button>
                                             </form>
 
-                                            <button type="button" class="btn-danger icon-btn delete-result-btn" data-result-id="<?php echo h($result['id']); ?>" title="Delete dashboard" aria-label="Delete dashboard">🗑️</button>
+                                            <button type="button" class="btn-danger icon-btn delete-result-btn" data-result-id="<?php echo h($result['id']); ?>" title="Delete dashboard" aria-label="Delete dashboard">ðŸ—‘ï¸</button>
                                         <?php endif; ?>
 
-                                        <button type="button" class="btn-ghost icon-btn clone-result-btn" data-result-id="<?php echo h($result['id']); ?>" data-title="<?php echo h($dashboardTitle); ?>" title="Clone dashboard" aria-label="Clone dashboard">🧬</button>
+                                        <button type="button" class="btn-ghost icon-btn clone-result-btn" data-result-id="<?php echo h($result['id']); ?>" data-title="<?php echo h($dashboardTitle); ?>" title="Clone dashboard" aria-label="Clone dashboard">ðŸ§¬</button>
 
                                         <?php if ($isOwner): ?>
                                             <button type="button" class="btn-ghost icon-btn edit-code-btn" data-result-id="<?php echo h($result['id']); ?>" title="Edit code" aria-label="Edit code">&lt;/&gt;</button>
@@ -985,4 +985,5 @@ try {
     </script>
 </body>
 </html>
+
 

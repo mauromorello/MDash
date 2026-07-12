@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
@@ -137,10 +137,10 @@ function xmlEscape(string $value): string {
 
 function truncateText(string $value, int $maxLength): string {
     if (function_exists('mb_strlen') && function_exists('mb_substr')) {
-        return mb_strlen($value, 'UTF-8') > $maxLength ? mb_substr($value, 0, $maxLength - 1, 'UTF-8') . '…' : $value;
+        return mb_strlen($value, 'UTF-8') > $maxLength ? mb_substr($value, 0, $maxLength - 1, 'UTF-8') . 'â€¦' : $value;
     }
 
-    return strlen($value) > $maxLength ? substr($value, 0, $maxLength - 1) . '…' : $value;
+    return strlen($value) > $maxLength ? substr($value, 0, $maxLength - 1) . 'â€¦' : $value;
 }
 
 function buildThumbnailSvg(array $context): string {
@@ -688,7 +688,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Prompt</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
     <style>
         .generation-overlay {
             position: fixed;
@@ -761,7 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         }
 
         .generation-overlay-log li::before {
-            content: '○';
+            content: 'â—‹';
             color: #64748b;
             font-weight: 700;
         }
@@ -771,12 +771,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         }
 
         .generation-overlay-log li.active::before {
-            content: '●';
+            content: 'â—';
             color: #38bdf8;
         }
 
         .generation-overlay-log li.done::before {
-            content: '✓';
+            content: 'âœ“';
             color: #22c55e;
         }
     </style>
@@ -1137,3 +1137,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
     </script>
 </body>
 </html>
+
