@@ -105,6 +105,8 @@ function getUploadAiPromptOptionKey(int $userId): string {
 function defaultUploadAiPromptTemplate(): string {
     return "You are a senior data analyst.\n"
         . "Analyze the CSV sample provided below.\n"
+        . "Use the CSV technical profile section to parse values correctly.\n"
+        . "Include CSV format details in your final results, especially in Prompt 2.\n"
         . "IMPORTANT: your entire answer MUST be in English only.\n"
         . "Return plain text only (no markdown, no code fences).\n"
         . "Return EXACTLY these 4 keys, one key per line and in this order:\n"
@@ -123,8 +125,224 @@ function defaultUploadAiPromptTemplate(): string {
         . "- Validation checks\n"
         . "If a rule is unknown, state 'Unknown - requires business confirmation'.\n\n"
         . "File name: {{filename}}\n"
+        . "CSV technical profile:\n"
+        . "{{csv_format_analysis}}\n\n"
         . "CSV sample (HEADER + first 5 rows + last 5 rows):\n"
         . "{{dataset_sample}}";
+}
+
+function isCsvFilename(string $fileName): bool {
+    return strtolower((string)pathinfo($fileName, PATHINFO_EXTENSION)) === 'csv';
+}
+
+function countDelimiterOutsideQuotes(string $line, string $delimiter, string $quoteChar): int {
+    $count = 0;
+    $inQuote = false;
+    $len = strlen($line);
+
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $line[$i];
+        if ($quoteChar !== '' && $ch === $quoteChar) {
+            if ($inQuote && $i + 1 < $len && $line[$i + 1] === $quoteChar) {
+                $i++;
+                continue;
+            }
+            $inQuote = !$inQuote;
+            continue;
+        }
+
+        if (!$inQuote && $ch === $delimiter) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
+function computeVariance(array $values): float {
+    if (empty($values)) {
+        return INF;
+    }
+
+    $n = count($values);
+    $mean = array_sum($values) / $n;
+    $sumSquares = 0.0;
+    foreach ($values as $v) {
+        $d = (float)$v - $mean;
+        $sumSquares += $d * $d;
+    }
+
+    return $sumSquares / $n;
+}
+
+function detectCsvFormat(string $absolutePath, int $sampleLineLimit = 50): array {
+    if (!is_file($absolutePath) || !is_readable($absolutePath)) {
+        throw new RuntimeException('Uploaded CSV file is not readable.');
+    }
+
+    $raw = file_get_contents($absolutePath, false, null, 0, 1024 * 1024);
+    if ($raw === false) {
+        throw new RuntimeException('Unable to read CSV file for format detection.');
+    }
+    $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw;
+
+    $lineEnding = "\n";
+    $lineEndingLabel = 'LF';
+    if (strpos($raw, "\r\n") !== false) {
+        $lineEnding = "\r\n";
+        $lineEndingLabel = 'CRLF';
+    } elseif (strpos($raw, "\r") !== false) {
+        $lineEnding = "\r";
+        $lineEndingLabel = 'CR';
+    }
+
+    $allLines = preg_split('/\r\n|\n|\r/', $raw) ?: [];
+    $sampleLines = [];
+    foreach ($allLines as $line) {
+        if (trim($line) === '') {
+            continue;
+        }
+        $sampleLines[] = $line;
+        if (count($sampleLines) >= $sampleLineLimit) {
+            break;
+        }
+    }
+
+    if (empty($sampleLines)) {
+        return [
+            'line_ending' => $lineEnding,
+            'line_ending_label' => $lineEndingLabel,
+            'delimiter' => ',',
+            'quote_char' => '"',
+            'decimal_separator' => '.',
+            'sample_line_count' => 0,
+        ];
+    }
+
+    $delimiterCandidates = [',', ';', "\t", '|'];
+    $quoteCandidates = ['"', "'", ''];
+
+    $bestDelimiter = ',';
+    $bestQuoteForDelimiter = '"';
+    $bestVariance = INF;
+    $bestMean = -1.0;
+
+    foreach ($delimiterCandidates as $candidateDelimiter) {
+        foreach ($quoteCandidates as $candidateQuote) {
+            $counts = [];
+            foreach ($sampleLines as $line) {
+                $counts[] = countDelimiterOutsideQuotes($line, $candidateDelimiter, $candidateQuote);
+            }
+
+            $mean = array_sum($counts) / max(1, count($counts));
+            $variance = computeVariance($counts);
+            if ($mean <= 0) {
+                continue;
+            }
+
+            if ($variance < $bestVariance || ($variance === $bestVariance && $mean > $bestMean)) {
+                $bestVariance = $variance;
+                $bestMean = $mean;
+                $bestDelimiter = $candidateDelimiter;
+                $bestQuoteForDelimiter = $candidateQuote;
+            }
+        }
+    }
+
+    $bestQuote = $bestQuoteForDelimiter;
+    $bestQuoteScore = -1;
+    foreach (['"', "'"] as $candidateQuote) {
+        $evidence = 0;
+        $evenCountLines = 0;
+        foreach ($sampleLines as $line) {
+            if (preg_match('/(^|' . preg_quote($bestDelimiter, '/') . ')\s*' . preg_quote($candidateQuote, '/') . '/', $line)) {
+                $evidence++;
+            }
+            if ((substr_count($line, $candidateQuote) % 2) === 0) {
+                $evenCountLines++;
+            }
+        }
+
+        $score = $evidence * 10 + $evenCountLines;
+        if ($score > $bestQuoteScore && $evidence > 0) {
+            $bestQuoteScore = $score;
+            $bestQuote = $candidateQuote;
+        }
+    }
+
+    $commaDecimals = 0;
+    $dotDecimals = 0;
+    foreach ($sampleLines as $line) {
+        $cells = str_getcsv($line, $bestDelimiter, $bestQuote !== '' ? $bestQuote : '"');
+        foreach ($cells as $cell) {
+            $value = trim((string)$cell);
+            if ($value === '') {
+                continue;
+            }
+            if (preg_match('/^-?\d+,\d+$/', $value)) {
+                $commaDecimals++;
+            }
+            if (preg_match('/^-?\d+\.\d+$/', $value)) {
+                $dotDecimals++;
+            }
+        }
+    }
+
+    $decimalSeparator = '';
+    if ($commaDecimals > $dotDecimals) {
+        $decimalSeparator = ',';
+    } elseif ($dotDecimals > $commaDecimals) {
+        $decimalSeparator = '.';
+    } else {
+        if ($bestDelimiter === ';') {
+            $decimalSeparator = ',';
+        } elseif ($bestDelimiter === ',') {
+            $decimalSeparator = '.';
+        }
+    }
+
+    return [
+        'line_ending' => $lineEnding,
+        'line_ending_label' => $lineEndingLabel,
+        'delimiter' => $bestDelimiter,
+        'quote_char' => $bestQuote,
+        'decimal_separator' => $decimalSeparator,
+        'sample_line_count' => count($sampleLines),
+    ];
+}
+
+function buildCsvFormatAnalysisText(array $format): string {
+    $delimiterLabel = (string)($format['delimiter'] ?? ',');
+    if ($delimiterLabel === "\t") {
+        $delimiterLabel = 'TAB';
+    }
+
+    $quote = (string)($format['quote_char'] ?? '');
+    $quoteLabel = $quote !== '' ? $quote : 'none';
+    $decimal = (string)($format['decimal_separator'] ?? '');
+    $decimalLabel = $decimal !== '' ? $decimal : 'unknown';
+    $lineEndingLabel = (string)($format['line_ending_label'] ?? 'unknown');
+    $sampleCount = (int)($format['sample_line_count'] ?? 0);
+
+    return "- Line ending: {$lineEndingLabel}\n"
+        . "- Field delimiter: {$delimiterLabel}\n"
+        . "- Quote character: {$quoteLabel}\n"
+        . "- Decimal separator: {$decimalLabel}\n"
+        . "- Sample lines analyzed: {$sampleCount}";
+}
+
+function buildPrompt1PrefillFromCsvFormat(array $format): string {
+    $lineEnding = (string)($format['line_ending_label'] ?? 'unknown');
+    $delimiter = (string)($format['delimiter'] ?? ',');
+    if ($delimiter === "\t") {
+        $delimiter = 'TAB';
+    }
+    $quote = (string)($format['quote_char'] ?? '');
+    $quote = $quote !== '' ? $quote : 'none';
+    $decimal = (string)($format['decimal_separator'] ?? '');
+    $decimal = $decimal !== '' ? $decimal : 'unknown';
+
+    return "CSV dataset imported for manual preparation. Technical profile: line ending {$lineEnding}, delimiter {$delimiter}, quote character {$quote}, decimal separator {$decimal}. Use this profile to parse rows and numeric/date values correctly.";
 }
 
 function getUploadAiPromptTemplate(PDO $pdo, int $userId): string {
@@ -157,7 +375,7 @@ function csvEscapeCell(string $value): string {
     return '"' . str_replace('"', '""', $value) . '"';
 }
 
-function readCsvHeadTailPreviewRows(string $absolutePath, int $headRows = 5, int $tailRows = 5): array {
+function readCsvHeadTailPreviewRows(string $absolutePath, int $headRows = 5, int $tailRows = 5, ?array $csvFormat = null): array {
     if (!is_file($absolutePath) || !is_readable($absolutePath)) {
         throw new RuntimeException('Uploaded file is not readable.');
     }
@@ -168,6 +386,12 @@ function readCsvHeadTailPreviewRows(string $absolutePath, int $headRows = 5, int
     $totalDataRows = 0;
 
     $file = new SplFileObject($absolutePath, 'r');
+    $delimiter = (string)($csvFormat['delimiter'] ?? ',');
+    $quoteChar = (string)($csvFormat['quote_char'] ?? '"');
+    if ($quoteChar === '') {
+        $quoteChar = '"';
+    }
+    $file->setCsvControl($delimiter, $quoteChar, '\\');
     while (!$file->eof()) {
         $row = $file->fgetcsv();
         if ($row === false || $row === [null]) {
@@ -275,17 +499,24 @@ function buildDatasetSampleForAi(array $preview): string {
     return implode("\n", $lines);
 }
 
-function buildUploadAutofillPrompt(string $template, array $uploadRecord, string $datasetSample): string {
+function buildUploadAutofillPrompt(string $template, array $uploadRecord, string $datasetSample, string $csvFormatAnalysis): string {
     $fileName = (string)($uploadRecord['filename'] ?? 'data.csv');
     $template = trim($template);
     if ($template === '') {
         $template = defaultUploadAiPromptTemplate();
     }
 
-    return strtr($template, [
+    $prompt = strtr($template, [
         '{{filename}}' => $fileName,
+        '{{csv_format_analysis}}' => $csvFormatAnalysis,
         '{{dataset_sample}}' => $datasetSample,
     ]);
+
+    if (!str_contains($template, '{{csv_format_analysis}}')) {
+        $prompt .= "\n\nCSV technical profile:\n" . $csvFormatAnalysis;
+    }
+
+    return $prompt;
 }
 
 function prompt2LooksStructural(string $prompt2): bool {
@@ -813,14 +1044,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
                 throw new RuntimeException('Uploaded file path is missing.');
             }
             $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
-            $previewRows = readCsvHeadTailPreviewRows($absolutePath, 5, 5);
+            $csvFormat = null;
+            $csvFormatAnalysis = 'N/A';
+            if (isCsvFilename((string)($uploadRecord['filename'] ?? ''))) {
+                $csvFormat = detectCsvFormat($absolutePath, 50);
+                $csvFormatAnalysis = buildCsvFormatAnalysisText($csvFormat);
+            }
+
+            $previewRows = readCsvHeadTailPreviewRows($absolutePath, 5, 5, $csvFormat);
             $datasetSample = buildDatasetSampleForAi($previewRows);
             if ($datasetSample === '') {
                 throw new RuntimeException('Unable to build CSV sample for AI.');
             }
 
             $userTemplate = getUploadAiPromptTemplate($pdo, (int)$user['id']);
-            $prompt = buildUploadAutofillPrompt($userTemplate, $uploadRecord, $datasetSample);
+            $prompt = buildUploadAutofillPrompt($userTemplate, $uploadRecord, $datasetSample, $csvFormatAnalysis);
             $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
             $parsed = parseAutofillResponse($generatedText);
             $prompt2Final = trim((string)$parsed['prompt_2']);
@@ -909,21 +1147,37 @@ if ($uploadId > 0 && $pdo) {
 
 $preview = ['header' => [], 'top_rows' => [], 'bottom_rows' => [], 'total_data_rows' => 0];
 $aiAutofillPromptPreview = '';
+$csvFormat = null;
+$csvFormatAnalysis = '';
+$manualPrompt1Prefill = '';
 $aiAlreadyExecuted = false;
-if ($record && $flow === 'ai') {
+if ($record && $flow !== '') {
     $relativePath = (string)($record['path'] ?? '');
     if ($relativePath !== '') {
         $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
         try {
-            $preview = readCsvHeadTailPreviewRows($absolutePath, 5, 5);
+            if (isCsvFilename((string)($record['filename'] ?? ''))) {
+                $csvFormat = detectCsvFormat($absolutePath, 50);
+                $csvFormatAnalysis = buildCsvFormatAnalysisText($csvFormat);
+            }
+
+            $preview = readCsvHeadTailPreviewRows($absolutePath, 5, 5, $csvFormat);
             $datasetSampleForPrompt = buildDatasetSampleForAi($preview);
-            $aiAutofillPromptPreview = buildUploadAutofillPrompt($uploadAiPromptTemplate, $record, $datasetSampleForPrompt);
+            if ($flow === 'ai') {
+                $aiAutofillPromptPreview = buildUploadAutofillPrompt($uploadAiPromptTemplate, $record, $datasetSampleForPrompt, $csvFormatAnalysis !== '' ? $csvFormatAnalysis : 'N/A');
+            }
+
+            if ($flow === 'manual' && trim((string)($record['prompt_1'] ?? '')) === '' && $csvFormat !== null) {
+                $manualPrompt1Prefill = buildPrompt1PrefillFromCsvFormat($csvFormat);
+            }
         } catch (Throwable $e) {
             $message = $message !== '' ? $message : $e->getMessage();
         }
     }
 
-    $aiAlreadyExecuted = !empty($_SESSION['upload_ai_called'][(int)$record['id']]);
+    if ($flow === 'ai') {
+        $aiAlreadyExecuted = !empty($_SESSION['upload_ai_called'][(int)$record['id']]);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -1001,6 +1255,12 @@ if ($record && $flow === 'ai') {
                             <label for="upload_ai_prompt_preview">Prompt sent to AI</label>
                             <textarea id="upload_ai_prompt_preview" class="upload-ai-prompt-preview" readonly><?php echo h($aiAutofillPromptPreview); ?></textarea>
                         </div>
+                        <?php if ($csvFormatAnalysis !== ''): ?>
+                            <div class="field">
+                                <label>Detected CSV format</label>
+                                <textarea class="upload-ai-prompt-preview" readonly><?php echo h($csvFormatAnalysis); ?></textarea>
+                            </div>
+                        <?php endif; ?>
                         <div class="field">
                             <label for="id_ai_db">AI profile</label>
                             <select id="id_ai_db" name="id_ai_db">
@@ -1078,7 +1338,7 @@ if ($record && $flow === 'ai') {
 
                         <div class="field">
                             <label for="prompt_1">Prompt 1: table meaning and usage</label>
-                            <textarea id="prompt_1" name="prompt_1" required><?php echo h($record['prompt_1'] ?? ''); ?></textarea>
+                            <textarea id="prompt_1" name="prompt_1" required><?php echo h(trim((string)($record['prompt_1'] ?? '')) !== '' ? (string)$record['prompt_1'] : $manualPrompt1Prefill); ?></textarea>
                         </div>
 
                         <div class="field">
