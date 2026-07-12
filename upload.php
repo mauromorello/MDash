@@ -106,13 +106,74 @@ function defaultDataDiscoveryPrompt(): string {
         . "Return plain text only (no markdown fences).";
 }
 
-function readCsvPreviewRows(string $absolutePath, int $maxRows = 10): array {
+function getUploadAiPromptOptionKey(int $userId): string {
+    return 'upload.ai.prompt.template.user.' . $userId;
+}
+
+function defaultUploadAiPromptTemplate(): string {
+    return "You are a senior data analyst.\n"
+        . "Analyze the CSV sample provided below.\n"
+        . "IMPORTANT: your entire answer MUST be in English only.\n"
+        . "Return plain text only (no markdown, no code fences).\n"
+        . "Return EXACTLY these 4 keys, one key per line and in this order:\n"
+        . "Title: <short title in English>\n"
+        . "Long title: <long descriptive title in English>\n"
+        . "Prompt 1: <what this table is and what it is used for, in English>\n"
+        . "Prompt 2: <STRUCTURED field-by-field schema and parsing rules in English>\n\n"
+        . "Prompt 2 must include, for EVERY detected field/column, all of these elements:\n"
+        . "- Field name\n"
+        . "- Business meaning\n"
+        . "- Observed data type\n"
+        . "- Example values\n"
+        . "- Parsing rule\n"
+        . "- Date parsing format (if applicable)\n"
+        . "- Numeric normalization rule (if applicable)\n"
+        . "- Validation checks\n"
+        . "If a rule is unknown, state 'Unknown - requires business confirmation'.\n\n"
+        . "File name: {{filename}}\n"
+        . "CSV sample (HEADER + first 5 rows + last 5 rows):\n"
+        . "{{dataset_sample}}";
+}
+
+function getUploadAiPromptTemplate(PDO $pdo, int $userId): string {
+    $stmt = $pdo->prepare('SELECT option_value FROM options WHERE option_key = ? LIMIT 1');
+    $stmt->execute([getUploadAiPromptOptionKey($userId)]);
+    $row = $stmt->fetch();
+
+    $saved = trim((string)($row['option_value'] ?? ''));
+    if ($saved !== '') {
+        return $saved;
+    }
+
+    return defaultUploadAiPromptTemplate();
+}
+
+function saveUploadAiPromptTemplate(PDO $pdo, int $userId, string $template): void {
+    $stmt = $pdo->prepare(
+        'INSERT INTO options (option_key, option_value, value_type) VALUES (?, ?, ?) '
+        . 'ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), value_type = VALUES(value_type)'
+    );
+    $stmt->execute([getUploadAiPromptOptionKey($userId), $template, 'text']);
+}
+
+function csvEscapeCell(string $value): string {
+    $needsQuotes = str_contains($value, ',') || str_contains($value, '"') || str_contains($value, "\n") || str_contains($value, "\r");
+    if (!$needsQuotes) {
+        return $value;
+    }
+
+    return '"' . str_replace('"', '""', $value) . '"';
+}
+
+function readCsvHeadTailPreviewRows(string $absolutePath, int $headRows = 5, int $tailRows = 5): array {
     if (!is_file($absolutePath) || !is_readable($absolutePath)) {
         throw new RuntimeException('Uploaded file is not readable.');
     }
 
-    $rows = [];
     $header = [];
+    $topRows = [];
+    $bottomRows = [];
+    $totalDataRows = 0;
 
     $file = new SplFileObject($absolutePath, 'r');
     while (!$file->eof()) {
@@ -127,15 +188,58 @@ function readCsvPreviewRows(string $absolutePath, int $maxRows = 10): array {
             continue;
         }
 
-        $rows[] = $normalized;
-        if (count($rows) >= $maxRows) {
-            break;
+        $totalDataRows++;
+        if (count($topRows) < $headRows) {
+            $topRows[] = $normalized;
         }
+
+        $bottomRows[] = $normalized;
+        if (count($bottomRows) > $tailRows) {
+            array_shift($bottomRows);
+        }
+    }
+
+    if (empty($header)) {
+        return [
+            'header' => [],
+            'top_rows' => [],
+            'bottom_rows' => [],
+            'total_data_rows' => 0,
+        ];
+    }
+
+    $columnCount = count($header);
+    foreach (array_merge($topRows, $bottomRows) as $dataRow) {
+        if (count($dataRow) > $columnCount) {
+            $columnCount = count($dataRow);
+        }
+    }
+
+    if (count($header) < $columnCount) {
+        for ($i = count($header); $i < $columnCount; $i++) {
+            $header[] = 'column_' . ($i + 1);
+        }
+    }
+
+    $normalizeByColumns = static function (array $row) use ($columnCount): array {
+        if (count($row) < $columnCount) {
+            $row = array_pad($row, $columnCount, '');
+        }
+        return array_slice($row, 0, $columnCount);
+    };
+
+    $topRows = array_map($normalizeByColumns, $topRows);
+    $bottomRows = array_map($normalizeByColumns, $bottomRows);
+
+    if ($totalDataRows <= ($headRows + $tailRows)) {
+        $bottomRows = [];
     }
 
     return [
         'header' => $header,
-        'rows' => $rows,
+        'top_rows' => $topRows,
+        'bottom_rows' => $bottomRows,
+        'total_data_rows' => $totalDataRows,
     ];
 }
 
@@ -154,74 +258,42 @@ function readDatasetContent(string $absolutePath): string {
     return $content;
 }
 
-function readDatasetContentForAi(string $absolutePath, int $maxDataRows = 1000): string {
-    if (!is_file($absolutePath) || !is_readable($absolutePath)) {
-        throw new RuntimeException('Uploaded file is not readable.');
+function buildDatasetSampleForAi(array $preview): string {
+    $header = $preview['header'] ?? [];
+    if (empty($header)) {
+        return '';
     }
 
-    $stream = fopen($absolutePath, 'rb');
-    if ($stream === false) {
-        throw new RuntimeException('Unable to open uploaded file.');
+    $lines = [];
+    $lines[] = implode(',', array_map(static fn($v) => csvEscapeCell((string)$v), $header));
+
+    $topRows = $preview['top_rows'] ?? [];
+    foreach ($topRows as $row) {
+        $lines[] = implode(',', array_map(static fn($v) => csvEscapeCell((string)$v), $row));
     }
 
-    $rawLines = [];
-    $lineCount = 0;
-    $maxLinesToSend = $maxDataRows + 1; // header + first N rows
-
-    while (!feof($stream)) {
-        $line = fgets($stream);
-        if ($line === false) {
-            break;
-        }
-
-        $lineCount++;
-        if (count($rawLines) < $maxLinesToSend) {
-            $normalized = rtrim($line, "\r\n");
-            if (count($rawLines) === 0) {
-                $normalized = preg_replace('/^\xEF\xBB\xBF/', '', $normalized) ?? $normalized;
-            }
-            $rawLines[] = $normalized;
+    $bottomRows = $preview['bottom_rows'] ?? [];
+    if (!empty($bottomRows)) {
+        $lines[] = '--- LAST 5 ROWS ---';
+        foreach ($bottomRows as $row) {
+            $lines[] = implode(',', array_map(static fn($v) => csvEscapeCell((string)$v), $row));
         }
     }
-    fclose($stream);
 
-    if (empty($rawLines)) {
-        throw new RuntimeException('Uploaded file is empty or unreadable.');
-    }
-
-    $content = implode("\n", $rawLines);
-    if ($lineCount > $maxLinesToSend) {
-        $content .= "\n\nNOTE: Dataset truncated for AI analysis. Only header + first {$maxDataRows} data rows are included.";
-    }
-
-    return $content;
+    return implode("\n", $lines);
 }
 
-function buildUploadAutofillPrompt(array $uploadRecord, string $datasetContent): string {
+function buildUploadAutofillPrompt(string $template, array $uploadRecord, string $datasetSample): string {
     $fileName = (string)($uploadRecord['filename'] ?? 'data.csv');
+    $template = trim($template);
+    if ($template === '') {
+        $template = defaultUploadAiPromptTemplate();
+    }
 
-    return "You are a senior data analyst.\n"
-        . "Analyze the FULL dataset content below (not only a sample).\n"
-        . "IMPORTANT: your entire answer MUST be in English only.\n"
-        . "Return plain text only (no markdown, no code fences).\n"
-        . "Return EXACTLY these 4 keys, one key per line and in this order:\n"
-        . "Title: <short title in English>\n"
-        . "Long title: <long descriptive title in English>\n"
-        . "Prompt 1: <what this table is and what it is used for, in English>\n"
-        . "Prompt 2: <STRUCTURED field-by-field schema and parsing rules in English>\n\n"
-        . "Prompt 2 must include, for EVERY detected field/column, all of these elements:\n"
-        . "- Field name\n"
-        . "- Business meaning\n"
-        . "- Observed data type\n"
-        . "- Example values\n"
-        . "- Parsing rule\n"
-        . "- Date parsing format (if applicable)\n"
-        . "- Numeric normalization rule (if applicable)\n"
-        . "- Validation checks\n"
-        . "If a rule is unknown, state 'Unknown - requires business confirmation'.\n\n"
-        . "File name: {$fileName}\n"
-        . "Full dataset content:\n"
-        . $datasetContent;
+    return strtr($template, [
+        '{{filename}}' => $fileName,
+        '{{dataset_sample}}' => $datasetSample,
+    ]);
 }
 
 function prompt2LooksStructural(string $prompt2): bool {
@@ -512,6 +584,7 @@ $uploadId = (int)($_GET['id'] ?? $_POST['upload_id'] ?? 0);
 $record = null;
 $aiProfiles = [];
 $uploadClauseAccepted = false;
+$uploadAiPromptTemplate = '';
 $flow = (string)($_GET['flow'] ?? $_POST['flow'] ?? '');
 if ($flow !== 'ai' && $flow !== 'manual') {
     $flow = '';
@@ -577,6 +650,7 @@ try {
     mdashEnsureAiDbTable($pdo);
     ensureOptionsTable($pdo);
     $uploadClauseAccepted = hasAcceptedUploadClause($pdo, (int)$user['id']);
+    $uploadAiPromptTemplate = getUploadAiPromptTemplate($pdo, (int)$user['id']);
 
     $aiProfilesStmt = $pdo->prepare(
         'SELECT a.*
@@ -592,6 +666,23 @@ try {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     $action = (string)($_POST['action'] ?? '');
+
+    if ($action === 'save_upload_ai_prompt_template') {
+        try {
+            $template = trim((string)($_POST['template'] ?? ''));
+            if ($template === '') {
+                throw new RuntimeException('Prompt template cannot be empty.');
+            }
+            if (utf8Length($template) > 16000000) {
+                throw new RuntimeException('Prompt template is too long.');
+            }
+
+            saveUploadAiPromptTemplate($pdo, (int)$user['id'], $template);
+            sendAiJson(true, 'Prompt template saved.');
+        } catch (Throwable $e) {
+            sendAiJson(false, $e->getMessage());
+        }
+    }
 
     if ($action === 'upload_file') {
         $alreadyAccepted = hasAcceptedUploadClause($pdo, (int)$user['id']);
@@ -736,9 +827,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
                 throw new RuntimeException('Uploaded file path is missing.');
             }
             $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
-            $datasetContent = readDatasetContentForAi($absolutePath, 1000);
+            $previewRows = readCsvHeadTailPreviewRows($absolutePath, 5, 5);
+            $datasetSample = buildDatasetSampleForAi($previewRows);
+            if ($datasetSample === '') {
+                throw new RuntimeException('Unable to build CSV sample for AI.');
+            }
 
-            $prompt = buildUploadAutofillPrompt($uploadRecord, $datasetContent);
+            $userTemplate = getUploadAiPromptTemplate($pdo, (int)$user['id']);
+            $prompt = buildUploadAutofillPrompt($userTemplate, $uploadRecord, $datasetSample);
             $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
             $parsed = parseAutofillResponse($generatedText);
             $prompt2Final = trim((string)$parsed['prompt_2']);
@@ -825,7 +921,7 @@ if ($uploadId > 0 && $pdo) {
     $record = $rowStmt->fetch();
 }
 
-$preview = ['header' => [], 'rows' => []];
+$preview = ['header' => [], 'top_rows' => [], 'bottom_rows' => [], 'total_data_rows' => 0];
 $aiAutofillPromptPreview = '';
 $aiAlreadyExecuted = false;
 if ($record && $flow === 'ai') {
@@ -833,9 +929,9 @@ if ($record && $flow === 'ai') {
     if ($relativePath !== '') {
         $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
         try {
-            $preview = readCsvPreviewRows($absolutePath, 10);
-            $datasetForPrompt = readDatasetContentForAi($absolutePath, 1000);
-            $aiAutofillPromptPreview = buildUploadAutofillPrompt($record, $datasetForPrompt);
+            $preview = readCsvHeadTailPreviewRows($absolutePath, 5, 5);
+            $datasetSampleForPrompt = buildDatasetSampleForAi($preview);
+            $aiAutofillPromptPreview = buildUploadAutofillPrompt($uploadAiPromptTemplate, $record, $datasetSampleForPrompt);
         } catch (Throwable $e) {
             $message = $message !== '' ? $message : $e->getMessage();
         }
@@ -914,6 +1010,11 @@ if ($record && $flow === 'ai') {
                         <h3>AI analysis (one shot)</h3>
                         <p>The AI will be called one time and will auto-fill Title, Long title, Prompt 1 and Prompt 2.</p>
                         <div class="field">
+                            <label for="upload_ai_prompt_template">AI prompt template (autosave)</label>
+                            <textarea id="upload_ai_prompt_template" class="upload-ai-prompt-preview"><?php echo h($uploadAiPromptTemplate); ?></textarea>
+                            <div id="uploadAiTemplateStatus" class="meta">Placeholders: {{filename}}, {{dataset_sample}}</div>
+                        </div>
+                        <div class="field">
                             <label for="upload_ai_prompt_preview">Prompt sent to AI</label>
                             <textarea id="upload_ai_prompt_preview" class="upload-ai-prompt-preview" readonly><?php echo h($aiAutofillPromptPreview); ?></textarea>
                         </div>
@@ -935,7 +1036,7 @@ if ($record && $flow === 'ai') {
                 <div id="uploadPostAiArea" class="<?php echo ($flow === 'ai' && !$aiAlreadyExecuted) ? 'hidden' : ''; ?>">
                     <?php if ($flow === 'ai'): ?>
                         <div class="card">
-                            <h3>Data preview (first 10 rows)</h3>
+                            <h3>Data preview (header + first 5 rows + last 5 rows)</h3>
                             <?php if (!empty($preview['header'])): ?>
                                 <div class="table-wrap preview-table-wrap">
                                     <table class="preview-table">
@@ -947,13 +1048,25 @@ if ($record && $flow === 'ai') {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <?php foreach ($preview['rows'] as $row): ?>
+                                            <?php foreach ($preview['top_rows'] as $row): ?>
                                                 <tr>
                                                     <?php foreach ($preview['header'] as $index => $col): ?>
                                                         <td><?php echo h($row[$index] ?? ''); ?></td>
                                                     <?php endforeach; ?>
                                                 </tr>
                                             <?php endforeach; ?>
+                                            <?php if (!empty($preview['bottom_rows'])): ?>
+                                                <tr>
+                                                    <td colspan="<?php echo h(count($preview['header'])); ?>" style="background:#e9efff;font-weight:700;">Last 5 rows</td>
+                                                </tr>
+                                                <?php foreach ($preview['bottom_rows'] as $row): ?>
+                                                    <tr>
+                                                        <?php foreach ($preview['header'] as $index => $col): ?>
+                                                            <td><?php echo h($row[$index] ?? ''); ?></td>
+                                                        <?php endforeach; ?>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
                                         </tbody>
                                     </table>
                                 </div>
@@ -1130,6 +1243,65 @@ if ($record && $flow === 'ai') {
 
         const analyzeUploadAiBtn = document.getElementById('analyzeUploadAiBtn');
         const uploadPostAiArea = document.getElementById('uploadPostAiArea');
+        const uploadAiTemplate = document.getElementById('upload_ai_prompt_template');
+        const uploadAiTemplateStatus = document.getElementById('uploadAiTemplateStatus');
+
+        let uploadAiTemplateTimer = null;
+        function saveUploadAiTemplate() {
+            if (!uploadAiTemplate) {
+                return;
+            }
+            const templateValue = String(uploadAiTemplate.value || '').trim();
+            if (templateValue === '') {
+                if (uploadAiTemplateStatus) {
+                    uploadAiTemplateStatus.textContent = 'Template cannot be empty.';
+                }
+                return;
+            }
+
+            if (uploadAiTemplateStatus) {
+                uploadAiTemplateStatus.textContent = 'Saving template...';
+            }
+
+            const payload = new URLSearchParams({
+                action: 'save_upload_ai_prompt_template',
+                template: templateValue,
+            });
+
+            fetch('upload.php', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                },
+                body: payload.toString(),
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (!result || !result.success) {
+                    throw new Error((result && result.message) ? result.message : 'Unable to save template.');
+                }
+                if (uploadAiTemplateStatus) {
+                    uploadAiTemplateStatus.textContent = 'Template saved automatically.';
+                }
+            })
+            .catch(error => {
+                if (uploadAiTemplateStatus) {
+                    uploadAiTemplateStatus.textContent = error.message || 'Unable to save template.';
+                }
+            });
+        }
+
+        if (uploadAiTemplate) {
+            uploadAiTemplate.addEventListener('input', function () {
+                if (uploadAiTemplateTimer) {
+                    clearTimeout(uploadAiTemplateTimer);
+                }
+                uploadAiTemplateTimer = setTimeout(saveUploadAiTemplate, 600);
+            });
+            uploadAiTemplate.addEventListener('blur', saveUploadAiTemplate);
+        }
+
         if (analyzeUploadAiBtn) {
             analyzeUploadAiBtn.addEventListener('click', function () {
                 const aiSelect = document.getElementById('id_ai_db');
