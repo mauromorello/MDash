@@ -64,6 +64,7 @@ try {
 
     mdashEnsureDashboardAiColumn($pdo);
     mdashEnsureAiDbTable($pdo);
+    mdashEnsureDashboardDatasourceMapTable($pdo);
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -72,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     $dashboardId = (int)($_POST['id'] ?? 0);
     if ($dashboardId > 0) {
         try {
+            $pdo->prepare('DELETE FROM dashboard_datasources WHERE id_dashboard = ?')->execute([$dashboardId]);
             $stmt = $pdo->prepare('DELETE FROM dashboards WHERE id = ?');
             $stmt->execute([$dashboardId]);
             header('Location: dashboards.php?deleted=1');
@@ -85,7 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 if ($pdo) {
     try {
         $stmt = $pdo->query(
-            'SELECT d.*, u.filename AS datasource_filename, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model
+            'SELECT d.*, u.filename AS datasource_filename, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model,
+                    (
+                        SELECT GROUP_CONCAT(CONCAT("#", ud.id, " - ", ud.filename) ORDER BY dd.sort_order SEPARATOR "\n")
+                        FROM dashboard_datasources dd
+                        LEFT JOIN uploads ud ON ud.id = dd.id_datasource
+                        WHERE dd.id_dashboard = d.id
+                    ) AS datasource_list
              FROM dashboards d
              LEFT JOIN uploads u ON u.id = d.id_datasource
              LEFT JOIN ai_db a ON a.id = d.id_ai_db
@@ -164,7 +172,9 @@ if (!empty($_GET['created'])) {
                                 <td><?php echo h($dashboard['title']); ?></td>
                                 <td><?php echo h($dashboard['date_creation']); ?></td>
                                 <td>
-                                    <?php if (!empty($dashboard['id_datasource'])): ?>
+                                    <?php if (!empty($dashboard['datasource_list'])): ?>
+                                        <div class="meta" style="white-space:pre-wrap;"><?php echo h($dashboard['datasource_list']); ?></div>
+                                    <?php elseif (!empty($dashboard['id_datasource'])): ?>
                                         #<?php echo h($dashboard['id_datasource']); ?>
                                         <?php if (!empty($dashboard['datasource_filename'])): ?>
                                             <div class="meta"><?php echo h($dashboard['datasource_filename']); ?></div>

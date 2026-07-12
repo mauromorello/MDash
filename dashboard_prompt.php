@@ -412,14 +412,33 @@ try {
 
 if ($pdo && $dashboardId > 0) {
     try {
+        mdashEnsureDashboardDatasourceMapTable($pdo);
         $stmt = $pdo->prepare('SELECT * FROM dashboards WHERE id = ? LIMIT 1');
         $stmt->execute([$dashboardId]);
         $dashboard = $stmt->fetch();
 
-        if ($dashboard && !empty($dashboard['id_datasource'])) {
-            $uploadStmt = $pdo->prepare('SELECT * FROM uploads WHERE id = ? LIMIT 1');
-            $uploadStmt->execute([(int)$dashboard['id_datasource']]);
-            $upload = $uploadStmt->fetch();
+        if ($dashboard) {
+            $datasourceIds = mdashFetchDashboardDatasourceIds($pdo, (int)$dashboard['id']);
+            if (empty($datasourceIds) && !empty($dashboard['id_datasource'])) {
+                $datasourceIds = [(int)$dashboard['id_datasource']];
+            }
+
+            if (!empty($datasourceIds)) {
+                $uploadStmt = $pdo->prepare('SELECT * FROM uploads WHERE id = ? LIMIT 1');
+                $uploads = [];
+                foreach ($datasourceIds as $datasourceId) {
+                    $uploadStmt->execute([(int)$datasourceId]);
+                    $row = $uploadStmt->fetch();
+                    if ($row) {
+                        $uploads[] = $row;
+                    }
+                }
+
+                if (!empty($uploads)) {
+                    $upload = $uploads[0];
+                    $dashboard['__uploads'] = $uploads;
+                }
+            }
         }
 
         if ($dashboard && !empty($dashboard['id_template'])) {
@@ -539,7 +558,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $idOwner = (int)$user['id'];
             $isPublic = (int)($dashboard['is_public'] ?? 0);
             $isHidden = (int)($dashboard['is_hidden'] ?? 0);
-            $resultTags = trim((string)($upload['tags'] ?? ''));
+            $resultTags = '';
+            $tagCandidates = [];
+            $uploadsForTags = is_array($dashboard['__uploads'] ?? null) ? $dashboard['__uploads'] : [];
+            if (empty($uploadsForTags) && $upload) {
+                $uploadsForTags = [$upload];
+            }
+            foreach ($uploadsForTags as $uploadItem) {
+                $filenameTag = trim((string)($uploadItem['filename'] ?? ''));
+                $nativeTags = trim((string)($uploadItem['tags'] ?? ''));
+                if ($filenameTag !== '') {
+                    $tagCandidates[] = $filenameTag;
+                }
+                if ($nativeTags !== '') {
+                    $tagCandidates[] = $nativeTags;
+                }
+            }
+            $tagCandidates = array_values(array_unique(array_filter($tagCandidates, static function ($value) {
+                return trim((string)$value) !== '';
+            })));
+            $resultTags = implode(', ', $tagCandidates);
 
             $insertStmt = $pdo->prepare(
                 'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -578,15 +616,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
 
 if ($dashboard) {
     $promptTitle = trim((string)($dashboard['title'] ?? 'Dashboard without title'));
-    $dataSourceId = (int)($dashboard['id_datasource'] ?? 0);
-    $dataSourceFilename = (string)($upload['filename'] ?? 'N/A');
-    $dataSourceRelativePath = (string)($upload['path'] ?? '');
-    $dataSourceAbsoluteUrl = $dataSourceRelativePath !== '' ? buildAbsolutePath($dataSourceRelativePath) : '';
-    $dataSourceDescription = (string)($upload['description'] ?? '');
-    $dataSourceTags = (string)($upload['tags'] ?? '');
-    $dataSourceLongDescription = trim((string)($upload['long_description'] ?? ''));
-    $dataSourcePrompt1 = trim((string)($upload['prompt_1'] ?? ''));
-    $dataSourcePrompt2 = trim((string)($upload['prompt_2'] ?? ''));
+    $dashboardUploads = is_array($dashboard['__uploads'] ?? null) ? $dashboard['__uploads'] : [];
+    if (empty($dashboardUploads) && $upload) {
+        $dashboardUploads = [$upload];
+    }
 
     $sections = [];
     $seenTitles = [];
@@ -594,32 +627,45 @@ if ($dashboard) {
     addSectionIfNotEmpty($sections, $seenTitles, 'Dashboard title', $promptTitle);
 
     $dataSourceLines = [];
-    if ($dataSourceId > 0) {
-        $dataSourceLines[] = 'Data source ID: ' . $dataSourceId;
-    }
-    if ($dataSourceFilename !== '' && $dataSourceFilename !== 'N/A') {
-        $dataSourceLines[] = 'File name: ' . $dataSourceFilename;
-    }
-    if ($dataSourceRelativePath !== '') {
-        $dataSourceLines[] = 'Relative file path: ' . $dataSourceRelativePath;
-    }
-    if ($dataSourceAbsoluteUrl !== '') {
-        $dataSourceLines[] = 'Absolute file URL: ' . $dataSourceAbsoluteUrl;
-    }
-    if ($dataSourceDescription !== '') {
-        $dataSourceLines[] = 'Description: ' . $dataSourceDescription;
-    }
-    if ($dataSourceLongDescription !== '') {
-        $dataSourceLines[] = "Long description:\n" . $dataSourceLongDescription;
-    }
-    if ($dataSourceTags !== '') {
-        $dataSourceLines[] = 'Tags: ' . $dataSourceTags;
-    }
-    if ($dataSourcePrompt1 !== '') {
-        $dataSourceLines[] = "Interpretation prompt 1:\n" . $dataSourcePrompt1;
-    }
-    if ($dataSourcePrompt2 !== '') {
-        $dataSourceLines[] = "Interpretation prompt 2:\n" . $dataSourcePrompt2;
+    foreach ($dashboardUploads as $index => $uploadItem) {
+        $dataSourceId = (int)($uploadItem['id'] ?? 0);
+        $dataSourceFilename = (string)($uploadItem['filename'] ?? 'N/A');
+        $dataSourceRelativePath = (string)($uploadItem['path'] ?? '');
+        $dataSourceAbsoluteUrl = $dataSourceRelativePath !== '' ? buildAbsolutePath($dataSourceRelativePath) : '';
+        $dataSourceDescription = (string)($uploadItem['description'] ?? '');
+        $dataSourceTags = (string)($uploadItem['tags'] ?? '');
+        $dataSourceLongDescription = trim((string)($uploadItem['long_description'] ?? ''));
+        $dataSourcePrompt1 = trim((string)($uploadItem['prompt_1'] ?? ''));
+        $dataSourcePrompt2 = trim((string)($uploadItem['prompt_2'] ?? ''));
+
+        $dataSourceLines[] = '--- Data source #' . ($index + 1) . ' ---';
+        if ($dataSourceId > 0) {
+            $dataSourceLines[] = 'Data source ID: ' . $dataSourceId;
+        }
+        if ($dataSourceFilename !== '' && $dataSourceFilename !== 'N/A') {
+            $dataSourceLines[] = 'File name: ' . $dataSourceFilename;
+        }
+        if ($dataSourceRelativePath !== '') {
+            $dataSourceLines[] = 'Relative file path: ' . $dataSourceRelativePath;
+        }
+        if ($dataSourceAbsoluteUrl !== '') {
+            $dataSourceLines[] = 'Absolute file URL: ' . $dataSourceAbsoluteUrl;
+        }
+        if ($dataSourceDescription !== '') {
+            $dataSourceLines[] = 'Description: ' . $dataSourceDescription;
+        }
+        if ($dataSourceLongDescription !== '') {
+            $dataSourceLines[] = "Long description:\n" . $dataSourceLongDescription;
+        }
+        if ($dataSourceTags !== '') {
+            $dataSourceLines[] = 'Tags: ' . $dataSourceTags;
+        }
+        if ($dataSourcePrompt1 !== '') {
+            $dataSourceLines[] = "Interpretation prompt 1:\n" . $dataSourcePrompt1;
+        }
+        if ($dataSourcePrompt2 !== '') {
+            $dataSourceLines[] = "Interpretation prompt 2:\n" . $dataSourcePrompt2;
+        }
     }
     addSectionIfNotEmpty($sections, $seenTitles, 'Data source', implode("\n", $dataSourceLines));
 

@@ -45,7 +45,7 @@ The project provides:
 - `dashboard_builder.php` creates dashboard definitions.
 - `edit_dashboard.php` updates existing definitions.
 - A dashboard can reference:
-  - one data source (`id_datasource`)
+  - multiple data sources (`dashboard_datasources`), with `dashboards.id_datasource` kept as legacy fallback
   - one template (`id_template`)
   - one makeup profile (`id_makeup`)
   - one default AI profile (`id_ai_db`)
@@ -200,6 +200,20 @@ data_manipulation_prompt TEXT NOT NULL,
 dashboard_prompt_1 TEXT NOT NULL,
 dashboard_prompt_2 TEXT NOT NULL,
 id_template INT NOT NULL DEFAULT 0
+```
+
+### `dashboard_datasources`
+
+```sql
+id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+id_dashboard INT UNSIGNED NOT NULL,
+id_datasource INT UNSIGNED NOT NULL,
+sort_order INT NOT NULL DEFAULT 0,
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+UNIQUE KEY uq_dashboard_datasource (id_dashboard, id_datasource),
+INDEX idx_dashboard_datasource_dashboard (id_dashboard),
+INDEX idx_dashboard_datasource_upload (id_datasource),
+INDEX idx_dashboard_datasource_sort (id_dashboard, sort_order)
 ```
 
 ### `ai_db`

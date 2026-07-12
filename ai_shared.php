@@ -92,6 +92,66 @@ function mdashEnsureDashboardAiColumn(PDO $pdo): void {
     }
 }
 
+function mdashEnsureDashboardDatasourceMapTable(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS dashboard_datasources (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            id_dashboard INT UNSIGNED NOT NULL,
+            id_datasource INT UNSIGNED NOT NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_dashboard_datasource (id_dashboard, id_datasource),
+            INDEX idx_dashboard_datasource_dashboard (id_dashboard),
+            INDEX idx_dashboard_datasource_upload (id_datasource),
+            INDEX idx_dashboard_datasource_sort (id_dashboard, sort_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
+function mdashFetchDashboardDatasourceIds(PDO $pdo, int $dashboardId): array {
+    if ($dashboardId <= 0) {
+        return [];
+    }
+
+    mdashEnsureDashboardDatasourceMapTable($pdo);
+
+    $stmt = $pdo->prepare(
+        'SELECT id_datasource
+         FROM dashboard_datasources
+         WHERE id_dashboard = ?
+         ORDER BY sort_order ASC, id ASC'
+    );
+    $stmt->execute([$dashboardId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    return array_values(array_map('intval', $rows ?: []));
+}
+
+function mdashReplaceDashboardDatasources(PDO $pdo, int $dashboardId, array $datasourceIds): void {
+    mdashEnsureDashboardDatasourceMapTable($pdo);
+
+    $cleanIds = [];
+    foreach ($datasourceIds as $rawId) {
+        $id = (int)$rawId;
+        if ($id > 0 && !in_array($id, $cleanIds, true)) {
+            $cleanIds[] = $id;
+        }
+    }
+
+    $pdo->prepare('DELETE FROM dashboard_datasources WHERE id_dashboard = ?')->execute([$dashboardId]);
+
+    if (empty($cleanIds)) {
+        return;
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO dashboard_datasources (id_dashboard, id_datasource, sort_order) VALUES (?, ?, ?)'
+    );
+    foreach ($cleanIds as $index => $idDatasource) {
+        $insert->execute([$dashboardId, $idDatasource, $index + 1]);
+    }
+}
+
 function mdashEnsureResultsAiColumns(PDO $pdo): void {
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS results (

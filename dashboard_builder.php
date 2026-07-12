@@ -55,7 +55,7 @@ $makeups = [];
 $aiProfiles = [];
 $formData = [
     'title' => '',
-    'id_datasource' => '',
+    'id_datasources' => [],
     'id_makeup' => '0',
     'id_ai_db' => '0',
     'data_filter_prompt' => '',
@@ -166,6 +166,7 @@ try {
 
     mdashEnsureAiDbTable($pdo);
     mdashEnsureDashboardAiColumn($pdo);
+    mdashEnsureDashboardDatasourceMapTable($pdo);
     $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], true);
 
     if ($formData['id_ai_db'] === '0' && !empty($aiProfiles)) {
@@ -176,9 +177,28 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_dashboard') {
-    foreach ($formData as $key => $value) {
-        $formData[$key] = trim((string)($_POST[$key] ?? ''));
+    $formData['title'] = trim((string)($_POST['title'] ?? ''));
+    $formData['id_makeup'] = trim((string)($_POST['id_makeup'] ?? '0'));
+    $formData['id_ai_db'] = trim((string)($_POST['id_ai_db'] ?? '0'));
+    $formData['data_filter_prompt'] = trim((string)($_POST['data_filter_prompt'] ?? ''));
+    $formData['data_manipulation_prompt'] = trim((string)($_POST['data_manipulation_prompt'] ?? ''));
+    $formData['dashboard_prompt_1'] = trim((string)($_POST['dashboard_prompt_1'] ?? ''));
+    $formData['dashboard_prompt_2'] = trim((string)($_POST['dashboard_prompt_2'] ?? ''));
+    $formData['id_template'] = trim((string)($_POST['id_template'] ?? '0'));
+
+    $postedDatasourceIds = $_POST['id_datasources'] ?? [];
+    if (!is_array($postedDatasourceIds)) {
+        $postedDatasourceIds = [];
     }
+
+    $selectedDatasourceIds = [];
+    foreach ($postedDatasourceIds as $postedId) {
+        $id = (int)$postedId;
+        if ($id > 0 && !in_array($id, $selectedDatasourceIds, true)) {
+            $selectedDatasourceIds[] = $id;
+        }
+    }
+    $formData['id_datasources'] = $selectedDatasourceIds;
 
     if (!$pdo) {
         $error = 'Database error: ' . $error;
@@ -218,12 +238,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 }
             }
 
+            if (!empty($selectedDatasourceIds)) {
+                $checkDatasource = $pdo->prepare('SELECT id FROM uploads WHERE id = ? LIMIT 1');
+                foreach ($selectedDatasourceIds as $selectedDatasourceId) {
+                    $checkDatasource->execute([$selectedDatasourceId]);
+                    if (!$checkDatasource->fetch()) {
+                        throw new RuntimeException('Selected data source #' . $selectedDatasourceId . ' not found.');
+                    }
+                }
+            }
+
             $stmt = $pdo->prepare(
                 'INSERT INTO dashboards (title, id_datasource, id_makeup, id_ai_db, data_filter_prompt, data_manipulation_prompt, dashboard_prompt_1, dashboard_prompt_2, id_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
+            $legacyDatasourceId = !empty($selectedDatasourceIds) ? (int)$selectedDatasourceIds[0] : null;
             $stmt->execute([
                 $formData['title'],
-                $formData['id_datasource'] !== '' ? (int)$formData['id_datasource'] : null,
+                $legacyDatasourceId,
                 (int)($formData['id_makeup'] !== '' ? $formData['id_makeup'] : 0),
                 $selectedAiId,
                 $formData['data_filter_prompt'],
@@ -232,6 +263,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $formData['dashboard_prompt_2'],
                 $idTemplate,
             ]);
+
+            $dashboardId = (int)$pdo->lastInsertId();
+            mdashReplaceDashboardDatasources($pdo, $dashboardId, $selectedDatasourceIds);
+
             header('Location: dashboards.php?created=1');
             exit;
         } catch (Throwable $e) {
@@ -278,15 +313,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 
                 <div class="form-grid">
                     <div class="field">
-                        <label for="id_datasource">Data source</label>
-                        <select id="id_datasource" name="id_datasource">
-                            <option value="">None</option>
+                        <label for="id_datasources">Data sources</label>
+                        <select id="id_datasources" name="id_datasources[]" multiple size="8">
                             <?php foreach ($uploads as $upload): ?>
-                                <option value="<?php echo h($upload['id']); ?>"<?php echo ((string)$formData['id_datasource'] === (string)$upload['id']) ? ' selected' : ''; ?>>
+                                <option value="<?php echo h($upload['id']); ?>"<?php echo in_array((int)$upload['id'], $formData['id_datasources'], true) ? ' selected' : ''; ?>>
                                     #<?php echo h($upload['id']); ?> - <?php echo h($upload['filename']); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
+                        <div class="meta">Select one or more data sources (Ctrl/Cmd + click for multi-select).</div>
                     </div>
                     <div class="field">
                         <label for="id_makeup">Makeup</label>
