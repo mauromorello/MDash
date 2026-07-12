@@ -826,16 +826,22 @@ if ($uploadId > 0 && $pdo) {
 }
 
 $preview = ['header' => [], 'rows' => []];
-if ($record) {
+$aiAutofillPromptPreview = '';
+$aiAlreadyExecuted = false;
+if ($record && $flow === 'ai') {
     $relativePath = (string)($record['path'] ?? '');
     if ($relativePath !== '') {
         $absolutePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath);
         try {
             $preview = readCsvPreviewRows($absolutePath, 10);
+            $datasetForPrompt = readDatasetContentForAi($absolutePath, 1000);
+            $aiAutofillPromptPreview = buildUploadAutofillPrompt($record, $datasetForPrompt);
         } catch (Throwable $e) {
             $message = $message !== '' ? $message : $e->getMessage();
         }
     }
+
+    $aiAlreadyExecuted = !empty($_SESSION['upload_ai_called'][(int)$record['id']]);
 }
 ?>
 <!DOCTYPE html>
@@ -908,6 +914,10 @@ if ($record) {
                         <h3>AI analysis (one shot)</h3>
                         <p>The AI will be called one time and will auto-fill Title, Long title, Prompt 1 and Prompt 2.</p>
                         <div class="field">
+                            <label for="upload_ai_prompt_preview">Prompt sent to AI</label>
+                            <textarea id="upload_ai_prompt_preview" class="upload-ai-prompt-preview" readonly><?php echo h($aiAutofillPromptPreview); ?></textarea>
+                        </div>
+                        <div class="field">
                             <label for="id_ai_db">AI profile</label>
                             <select id="id_ai_db" name="id_ai_db">
                                 <option value="">Select AI profile</option>
@@ -917,40 +927,43 @@ if ($record) {
                             </select>
                         </div>
                         <div class="inline-actions">
-                            <button type="button" class="secondary" id="analyzeUploadAiBtn" data-upload-id="<?php echo h($record['id']); ?>">Analyze with AI</button>
+                            <button type="button" class="secondary" id="analyzeUploadAiBtn" data-upload-id="<?php echo h($record['id']); ?>"<?php echo $aiAlreadyExecuted ? ' disabled' : ''; ?>><?php echo $aiAlreadyExecuted ? 'AI already executed' : 'Analyze with AI'; ?></button>
                         </div>
                     </div>
                 <?php endif; ?>
 
-                <div class="card">
-                    <h3>Data preview (first 10 rows)</h3>
-                    <?php if (!empty($preview['header'])): ?>
-                        <div class="table-wrap preview-table-wrap">
-                            <table class="preview-table">
-                                <thead>
-                                    <tr>
-                                        <?php foreach ($preview['header'] as $col): ?>
-                                            <th><?php echo h($col); ?></th>
-                                        <?php endforeach; ?>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($preview['rows'] as $row): ?>
-                                        <tr>
-                                            <?php foreach ($preview['header'] as $index => $col): ?>
-                                                <td><?php echo h($row[$index] ?? ''); ?></td>
+                <div id="uploadPostAiArea" class="<?php echo ($flow === 'ai' && !$aiAlreadyExecuted) ? 'hidden' : ''; ?>">
+                    <?php if ($flow === 'ai'): ?>
+                        <div class="card">
+                            <h3>Data preview (first 10 rows)</h3>
+                            <?php if (!empty($preview['header'])): ?>
+                                <div class="table-wrap preview-table-wrap">
+                                    <table class="preview-table">
+                                        <thead>
+                                            <tr>
+                                                <?php foreach ($preview['header'] as $col): ?>
+                                                    <th><?php echo h($col); ?></th>
+                                                <?php endforeach; ?>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($preview['rows'] as $row): ?>
+                                                <tr>
+                                                    <?php foreach ($preview['header'] as $index => $col): ?>
+                                                        <td><?php echo h($row[$index] ?? ''); ?></td>
+                                                    <?php endforeach; ?>
+                                                </tr>
                                             <?php endforeach; ?>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php else: ?>
+                                <div class="empty">No rows available for preview.</div>
+                            <?php endif; ?>
                         </div>
-                    <?php else: ?>
-                        <div class="empty">No rows available for preview.</div>
                     <?php endif; ?>
-                </div>
 
-                <div class="card">
+                    <div class="card">
                     <h3>Compile upload data</h3>
                     <form method="post">
                         <input type="hidden" name="action" value="save_metadata">
@@ -994,6 +1007,7 @@ if ($record) {
 
                         <button type="submit">Save and return home</button>
                     </form>
+                </div>
                 </div>
             <?php endif; ?>
         <?php endif; ?>
@@ -1115,6 +1129,7 @@ if ($record) {
         }
 
         const analyzeUploadAiBtn = document.getElementById('analyzeUploadAiBtn');
+        const uploadPostAiArea = document.getElementById('uploadPostAiArea');
         if (analyzeUploadAiBtn) {
             analyzeUploadAiBtn.addEventListener('click', function () {
                 const aiSelect = document.getElementById('id_ai_db');
@@ -1165,6 +1180,9 @@ if ($record) {
                     }
 
                     analyzeUploadAiBtn.textContent = 'AI already executed';
+                    if (uploadPostAiArea) {
+                        uploadPostAiArea.classList.remove('hidden');
+                    }
                     alert('AI analysis completed. You can now review and edit all fields manually before saving.');
                 })
                 .catch(error => {

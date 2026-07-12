@@ -9,6 +9,7 @@ The project provides:
 - dashboard definition, prompt composition, and AI generation (Gemini/OpenRouter);
 - AI profile management with owner-only connection tests and diagnostics;
 - generated result persistence with preview and thumbnail management.
+- owner-only single result editing with full HTML markup support.
 
 ## What The Project Does
 
@@ -67,11 +68,18 @@ The project provides:
 ### 7. Generated results management
 - `results.php` lists generated dashboards (owner + public visibility rules).
 - Owner actions include hide/reveal, permanent delete, and custom thumbnail paste.
+- Owner actions include direct link to `edit_result.php` for full record editing.
 - Pasted clipboard screenshot is stored in `results/<id>/thumbnail.*`.
 - Opening a dashboard from app links increments `results.n_views`.
 - Downloading a dashboard from app links increments `results.n_download`.
 - Cloning a dashboard increments source `results.n_clone`.
 - Main hub dashboard cards are ordered by `n_views` descending.
+
+### 8. Main thumbnail filtering
+- `main.php` includes a live search box in the thumbnail section.
+- Filtering is client-side and matches dashboard title, `results.tags`, and author username.
+- Non-matching thumbnails are hidden dynamically as the user types.
+- Tags are displayed in the hover overlay metadata.
 
 ## Pages And Main Responsibilities
 
@@ -93,6 +101,7 @@ The project provides:
 - `dashboards.php`: dashboard listing + preview + delete
 - `dashboard_prompt.php`: final prompt preview and AI generation
 - `results.php`: generated output management
+- `edit_result.php`: owner-only edit page for a single `results` record (including HTML markup)
 - `admin.php`: administrative management console
 - `config.php`: technical diagnostics page
 - `_act.php`: login/logout endpoint and users schema compatibility
@@ -226,13 +235,39 @@ ai_provider VARCHAR(100) NOT NULL DEFAULT '',
 ai_model VARCHAR(100) NOT NULL DEFAULT '',
 final_prompt TEXT NOT NULL,
 thumbnail_path TEXT NOT NULL,
-n_views INT NOT NULL DEFAULT 0,
-n_download INT NOT NULL DEFAULT 0,
-n_clone INT NOT NULL DEFAULT 0,
 HTML LONGTEXT NOT NULL,
 id_owner INT NOT NULL,
 is_public INT NOT NULL DEFAULT 0,
-is_hidden INT NOT NULL DEFAULT 0
+is_hidden INT NOT NULL DEFAULT 0,
+n_views INT NOT NULL DEFAULT 0,
+n_download INT NOT NULL DEFAULT 0,
+n_clone INT NOT NULL DEFAULT 0,
+tags TEXT NOT NULL
+```
+
+Canonical DDL used for the current record layout:
+
+```sql
+CREATE TABLE `results` (
+  `id` int NOT NULL,
+  `path` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `id_template` int NOT NULL,
+  `id_ai_db` int NOT NULL DEFAULT '0',
+  `ai_title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `ai_provider` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `ai_model` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `final_prompt` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `thumbnail_path` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `id_owner` int NOT NULL,
+  `is_public` int NOT NULL DEFAULT '0',
+  `is_hidden` int NOT NULL DEFAULT '0',
+  `HTML` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `n_views` int NOT NULL DEFAULT '0',
+  `n_download` int NOT NULL DEFAULT '0',
+  `n_clone` int NOT NULL DEFAULT '0',
+  `tags` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
 ### `options`

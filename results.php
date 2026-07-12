@@ -37,16 +37,6 @@ function h($value) {
 
 require_once __DIR__ . '/ai_shared.php';
 
-function buildAbsolutePath(string $relativePath): string {
-    $isHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
-    $scheme = $isHttps ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
-    $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
-
-    return $scheme . '://' . $host . ($basePath !== '' ? $basePath . '/' : '/') . $relativePath;
-}
-
 function removeDirectoryRecursive(string $dir): void {
     if (!is_dir($dir)) {
         return;
@@ -176,9 +166,7 @@ $error = '';
 $message = '';
 $showHidden = isset($_GET['show_hidden']) && (int)$_GET['show_hidden'] === 1;
 $requestedAction = (string)($_POST['action'] ?? $_GET['action'] ?? '');
-$expectsJson = ($requestedAction === 'get_html_code')
-    || ($requestedAction === 'save_html_code' && ($_POST['ajax'] ?? '') === '1')
-    || ($requestedAction === 'clone_result' && ($_POST['ajax'] ?? '') === '1');
+$expectsJson = ($requestedAction === 'clone_result' && ($_POST['ajax'] ?? '') === '1');
 
 try {
     $pdo = new PDO(
@@ -250,53 +238,11 @@ try {
         exit;
     }
 
-    if (($_GET['action'] ?? '') === 'get_html_code') {
-        $resultId = (int)($_GET['result_id'] ?? 0);
-        header('Content-Type: application/json');
-
-        if ($resultId <= 0) {
-            echo json_encode(['success' => false, 'message' => 'Invalid result id.']);
-            exit;
-        }
-
-        $stmt = $pdo->prepare(
-            'SELECT id, id_owner, path, `HTML`, is_public, is_hidden
-             FROM results
-             WHERE id = ?
-             LIMIT 1'
-        );
-        $stmt->execute([$resultId]);
-        $row = $stmt->fetch();
-
-        if (!$row) {
-            echo json_encode(['success' => false, 'message' => 'Result not found.']);
-            exit;
-        }
-
-        $isOwner = (int)$row['id_owner'] === (int)$user['id'];
-        $isVisiblePublic = (int)$row['is_public'] === 1 && (int)$row['is_hidden'] === 0;
-        if (!$isOwner && !$isVisiblePublic) {
-            echo json_encode(['success' => false, 'message' => 'Not authorized.']);
-            exit;
-        }
-
-        $htmlCode = (string)($row['HTML'] ?? '');
-        if ($htmlCode === '' && !empty($row['path'])) {
-            $diskPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, (string)$row['path']);
-            if (is_file($diskPath)) {
-                $htmlCode = (string)file_get_contents($diskPath);
-            }
-        }
-
-        echo json_encode(['success' => true, 'html' => $htmlCode]);
-        exit;
-    }
-
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = (string)($_POST['action'] ?? '');
         $resultId = (int)($_POST['result_id'] ?? 0);
 
-        if ($resultId > 0 && in_array($action, ['set_hidden', 'set_public', 'delete_result', 'save_thumbnail', 'save_html_code', 'clone_result'], true)) {
+        if ($resultId > 0 && in_array($action, ['set_hidden', 'set_public', 'delete_result', 'save_thumbnail', 'clone_result'], true)) {
             $ownerStmt = $pdo->prepare('SELECT id, id_owner, path FROM results WHERE id = ? LIMIT 1');
             $ownerStmt->execute([$resultId]);
             $ownerRow = $ownerStmt->fetch();
@@ -312,7 +258,7 @@ try {
             }
 
             if ($isClone) {
-                $visibilityStmt = $pdo->prepare('SELECT id, id_owner, is_public, is_hidden, path, thumbnail_path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, `HTML` FROM results WHERE id = ? LIMIT 1');
+                $visibilityStmt = $pdo->prepare('SELECT id, id_owner, is_public, is_hidden, path, thumbnail_path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, `HTML`, tags FROM results WHERE id = ? LIMIT 1');
                 $visibilityStmt->execute([$resultId]);
                 $sourceRow = $visibilityStmt->fetch();
                 if (!$sourceRow) {
@@ -370,8 +316,8 @@ try {
                 $newFinalPrompt = replaceDashboardTitleInPrompt((string)($sourceRow['final_prompt'] ?? ''), $newTitle);
 
                 $insertClone = $pdo->prepare(
-                    'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)'
+                    'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden, tags)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)'
                 );
                 $insertClone->execute([
                     $newResultId,
@@ -385,6 +331,7 @@ try {
                     $newThumbnailPath,
                     $sourceHtml,
                     (int)$user['id'],
+                    trim((string)($sourceRow['tags'] ?? '')),
                 ]);
                 $pdo->prepare('UPDATE results SET n_clone = n_clone + 1 WHERE id = ?')->execute([$resultId]);
 
@@ -441,36 +388,6 @@ try {
                 $message = 'Screenshot thumbnail saved successfully.';
             }
 
-            if ($action === 'save_html_code') {
-                $htmlCode = (string)($_POST['html_code'] ?? '');
-                if (trim($htmlCode) === '') {
-                    throw new RuntimeException('HTML code cannot be empty.');
-                }
-
-                $relativePath = (string)($ownerRow['path'] ?? '');
-                if ($relativePath === '') {
-                    throw new RuntimeException('Saved output path not found.');
-                }
-
-                $diskPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
-                $dirPath = dirname($diskPath);
-                if (!is_dir($dirPath) && !mkdir($dirPath, 0777, true) && !is_dir($dirPath)) {
-                    throw new RuntimeException('Unable to create output directory for HTML file.');
-                }
-
-                file_put_contents($diskPath, $htmlCode);
-
-                $htmlStmt = $pdo->prepare('UPDATE results SET `HTML` = ? WHERE id = ? AND id_owner = ?');
-                $htmlStmt->execute([$htmlCode, $resultId, (int)$user['id']]);
-
-                if (($_POST['ajax'] ?? '') === '1') {
-                    header('Content-Type: application/json');
-                    echo json_encode(['success' => true, 'message' => 'HTML code saved successfully.']);
-                    exit;
-                }
-
-                $message = 'HTML code saved successfully.';
-            }
         }
     }
 
@@ -506,8 +423,6 @@ try {
     <title>Results</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
     <link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material.min.css">
 </head>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
@@ -572,19 +487,19 @@ try {
                                     <strong><?php echo h($dashboardTitle); ?></strong>
                                     <div class="meta">#<?php echo h((int)$result['id']); ?></div>
                                     <div class="result-stats-badges" aria-label="Dashboard stats">
-                                        <span class="result-stat-badge" title="Views">ðŸ‘ï¸ <?php echo h((int)($result['n_views'] ?? 0)); ?></span>
-                                        <span class="result-stat-badge" title="Downloads">â¬‡ï¸ <?php echo h((int)($result['n_download'] ?? 0)); ?></span>
-                                        <span class="result-stat-badge" title="Clones">ðŸ§¬ <?php echo h((int)($result['n_clone'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Views">&#128065;&#65039; <?php echo h((int)($result['n_views'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Downloads">&#11015;&#65039; <?php echo h((int)($result['n_download'] ?? 0)); ?></span>
+                                        <span class="result-stat-badge" title="Clones">&#129516; <?php echo h((int)($result['n_clone'] ?? 0)); ?></span>
                                     </div>
                                 </td>
                                 <td><?php echo h($ownerLabel); ?></td>
                                 <td>
                                     <div class="result-actions">
-                                        <a class="btn-ghost icon-btn" href="results.php?action=open_result&amp;result_id=<?php echo h((int)$result['id']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">ðŸ”—</a>
-                                        <a class="btn-ghost icon-btn" href="results.php?action=download_result&amp;result_id=<?php echo h((int)$result['id']); ?>" title="Download dashboard" aria-label="Download dashboard">â¬‡ï¸</a>
+                                        <a class="btn-ghost icon-btn" href="results.php?action=open_result&amp;result_id=<?php echo h((int)$result['id']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">&#128279;</a>
+                                        <a class="btn-ghost icon-btn" href="results.php?action=download_result&amp;result_id=<?php echo h((int)$result['id']); ?>" title="Download dashboard" aria-label="Download dashboard">&#11015;&#65039;</a>
 
                                         <?php if ($isOwner): ?>
-                                            <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste thumbnail" aria-label="Paste thumbnail">ðŸ“‹</button>
+                                            <button type="button" class="btn-ghost icon-btn paste-thumb-btn" data-result-id="<?php echo h($result['id']); ?>" title="Paste thumbnail" aria-label="Paste thumbnail">&#128203;</button>
                                         <?php endif; ?>
 
                                         <?php if ($isOwner): ?>
@@ -592,23 +507,23 @@ try {
                                                 <input type="hidden" name="action" value="set_public">
                                                 <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
                                                 <input type="hidden" name="public_value" value="<?php echo ((int)$result['is_public'] === 1) ? '0' : '1'; ?>">
-                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>" aria-label="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>"><?php echo ((int)$result['is_public'] === 1) ? 'ðŸ”“' : 'ðŸ”’'; ?></button>
+                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>" aria-label="<?php echo ((int)$result['is_public'] === 1) ? 'Set private' : 'Set public'; ?>"><?php echo ((int)$result['is_public'] === 1) ? '&#128275;' : '&#128274;'; ?></button>
                                             </form>
 
                                             <form method="post">
                                                 <input type="hidden" name="action" value="set_hidden">
                                                 <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
                                                 <input type="hidden" name="hidden_value" value="<?php echo ((int)$result['is_hidden'] === 1) ? '0' : '1'; ?>">
-                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? 'ðŸ‘ï¸' : 'ðŸ™ˆ'; ?></button>
+                                                <button type="submit" class="btn-ghost icon-btn" title="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>" aria-label="<?php echo ((int)$result['is_hidden'] === 1) ? 'Restore dashboard' : 'Hide dashboard'; ?>"><?php echo ((int)$result['is_hidden'] === 1) ? '&#128065;&#65039;' : '&#128584;'; ?></button>
                                             </form>
 
-                                            <button type="button" class="btn-danger icon-btn delete-result-btn" data-result-id="<?php echo h($result['id']); ?>" title="Delete dashboard" aria-label="Delete dashboard">ðŸ—‘ï¸</button>
+                                            <button type="button" class="btn-danger icon-btn delete-result-btn" data-result-id="<?php echo h($result['id']); ?>" title="Delete dashboard" aria-label="Delete dashboard">&#128465;&#65039;</button>
                                         <?php endif; ?>
 
-                                        <button type="button" class="btn-ghost icon-btn clone-result-btn" data-result-id="<?php echo h($result['id']); ?>" data-title="<?php echo h($dashboardTitle); ?>" title="Clone dashboard" aria-label="Clone dashboard">ðŸ§¬</button>
+                                        <button type="button" class="btn-ghost icon-btn clone-result-btn" data-result-id="<?php echo h($result['id']); ?>" data-title="<?php echo h($dashboardTitle); ?>" title="Clone dashboard" aria-label="Clone dashboard">&#129516;</button>
 
                                         <?php if ($isOwner): ?>
-                                            <button type="button" class="btn-ghost icon-btn edit-code-btn" data-result-id="<?php echo h($result['id']); ?>" title="Edit code" aria-label="Edit code">&lt;/&gt;</button>
+                                            <a class="btn-ghost icon-btn" href="edit_result.php?id=<?php echo h((int)$result['id']); ?>" title="Edit result" aria-label="Edit result">&lt;/&gt;</a>
                                         <?php endif; ?>
 
                                         <?php if ($isOwner): ?>
@@ -656,29 +571,6 @@ try {
         </div>
     </div>
 
-    <div id="editCodeModal" class="code-modal hidden" role="dialog" aria-modal="true" aria-labelledby="codeModalTitle">
-        <div class="code-modal-backdrop" data-close-modal="1"></div>
-        <div class="code-modal-content">
-            <div class="code-modal-header">
-                <h2 id="codeModalTitle">Edit generated HTML</h2>
-                <button type="button" id="closeCodeModalBtn" class="secondary">Cancel</button>
-            </div>
-            <div class="code-modal-body">
-                <textarea id="codeEditorArea"></textarea>
-            </div>
-            <div class="code-modal-actions">
-                <button type="button" id="saveCodeBtn">Save code</button>
-                <button type="button" id="cancelCodeBtn" class="secondary">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.15.1/beautify-html.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
     <script>
         const logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) {
@@ -837,151 +729,6 @@ try {
             });
         }
 
-        const editCodeModal = document.getElementById('editCodeModal');
-        const closeCodeModalBtn = document.getElementById('closeCodeModalBtn');
-        const cancelCodeBtn = document.getElementById('cancelCodeBtn');
-        const saveCodeBtn = document.getElementById('saveCodeBtn');
-        const codeEditorArea = document.getElementById('codeEditorArea');
-        const editCodeButtons = document.querySelectorAll('.edit-code-btn');
-        let currentEditResultId = 0;
-        let codeEditor = null;
-
-        function ensureCodeEditor() {
-            if (codeEditor || !codeEditorArea || typeof CodeMirror === 'undefined') {
-                return;
-            }
-
-            codeEditor = CodeMirror.fromTextArea(codeEditorArea, {
-                mode: 'text/html',
-                theme: 'material',
-                lineNumbers: true,
-                lineWrapping: true,
-                indentUnit: 2,
-                tabSize: 2,
-            });
-            codeEditor.setSize('100%', '60vh');
-        }
-
-        function openCodeModal() {
-            editCodeModal.classList.remove('hidden');
-            ensureCodeEditor();
-            if (codeEditor) {
-                codeEditor.refresh();
-            }
-        }
-
-        function closeCodeModal() {
-            editCodeModal.classList.add('hidden');
-            currentEditResultId = 0;
-        }
-
-        async function loadResultHtml(resultId) {
-            const response = await fetch('results.php?action=get_html_code&result_id=' + encodeURIComponent(String(resultId)));
-            const payload = await response.json();
-            if (!payload || !payload.success) {
-                throw new Error(payload && payload.message ? payload.message : 'Unable to load HTML code.');
-            }
-
-            return String(payload.html || '');
-        }
-
-        editCodeButtons.forEach((button) => {
-            button.addEventListener('click', async function () {
-                const resultId = Number(button.getAttribute('data-result-id') || '0');
-                if (!resultId) {
-                    return;
-                }
-
-                const originalText = button.textContent;
-                button.disabled = true;
-                button.textContent = '...';
-
-                try {
-                    currentEditResultId = resultId;
-                    let htmlCode = await loadResultHtml(resultId);
-
-                    if (typeof html_beautify === 'function') {
-                        htmlCode = html_beautify(htmlCode, {
-                            indent_size: 2,
-                            preserve_newlines: true,
-                            wrap_line_length: 120,
-                        });
-                    }
-
-                    openCodeModal();
-                    if (codeEditor) {
-                        codeEditor.setValue(htmlCode);
-                        codeEditor.focus();
-                    } else if (codeEditorArea) {
-                        codeEditorArea.value = htmlCode;
-                    }
-                } catch (err) {
-                    alert(err.message || 'Unable to load HTML code.');
-                } finally {
-                    button.disabled = false;
-                    button.textContent = originalText;
-                }
-            });
-        });
-
-        async function saveCodeChanges() {
-            if (!currentEditResultId) {
-                return;
-            }
-
-            const htmlCode = codeEditor ? codeEditor.getValue() : String(codeEditorArea.value || '');
-            const formData = new FormData();
-            formData.append('action', 'save_html_code');
-            formData.append('result_id', String(currentEditResultId));
-            formData.append('html_code', htmlCode);
-            formData.append('ajax', '1');
-
-            const response = await fetch('results.php', {
-                method: 'POST',
-                body: formData,
-            });
-            const payload = await response.json();
-            if (!payload || !payload.success) {
-                throw new Error(payload && payload.message ? payload.message : 'Unable to save HTML code.');
-            }
-
-            alert(payload.message || 'HTML code saved successfully.');
-            closeCodeModal();
-        }
-
-        if (saveCodeBtn) {
-            saveCodeBtn.addEventListener('click', async function () {
-                saveCodeBtn.disabled = true;
-                const originalText = saveCodeBtn.textContent;
-                saveCodeBtn.textContent = 'Saving...';
-                try {
-                    await saveCodeChanges();
-                } catch (err) {
-                    alert(err.message || 'Unable to save HTML code.');
-                } finally {
-                    saveCodeBtn.disabled = false;
-                    saveCodeBtn.textContent = originalText;
-                }
-            });
-        }
-
-        if (cancelCodeBtn) {
-            cancelCodeBtn.addEventListener('click', function () {
-                closeCodeModal();
-            });
-        }
-
-        if (closeCodeModalBtn) {
-            closeCodeModalBtn.addEventListener('click', function () {
-                closeCodeModal();
-            });
-        }
-
-        document.querySelectorAll('[data-close-modal="1"]').forEach((node) => {
-            node.addEventListener('click', function () {
-                closeCodeModal();
-            });
-        });
     </script>
 </body>
 </html>

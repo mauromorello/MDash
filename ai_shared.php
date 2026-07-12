@@ -107,6 +107,7 @@ function mdashEnsureResultsAiColumns(PDO $pdo): void {
             n_views INT NOT NULL DEFAULT 0,
             n_download INT NOT NULL DEFAULT 0,
             n_clone INT NOT NULL DEFAULT 0,
+            tags TEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             `HTML` LONGTEXT COLLATE utf8mb4_unicode_ci NOT NULL,
             id_owner INT NOT NULL,
             is_public INT NOT NULL DEFAULT '0',
@@ -123,6 +124,7 @@ function mdashEnsureResultsAiColumns(PDO $pdo): void {
         'n_views' => "ALTER TABLE results ADD COLUMN n_views INT NOT NULL DEFAULT 0 AFTER is_hidden",
         'n_download' => "ALTER TABLE results ADD COLUMN n_download INT NOT NULL DEFAULT 0 AFTER n_views",
         'n_clone' => "ALTER TABLE results ADD COLUMN n_clone INT NOT NULL DEFAULT 0 AFTER n_download",
+        'tags' => "ALTER TABLE results ADD COLUMN tags TEXT COLLATE utf8mb4_unicode_ci NOT NULL AFTER n_clone",
     ];
 
     foreach ($columns as $column => $alterSql) {

@@ -538,9 +538,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
             $idOwner = (int)$user['id'];
             $isPublic = (int)($dashboard['is_public'] ?? 0);
             $isHidden = (int)($dashboard['is_hidden'] ?? 0);
+            $resultTags = trim((string)($upload['tags'] ?? ''));
 
             $insertStmt = $pdo->prepare(
-                'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO results (id, path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, thumbnail_path, `HTML`, id_owner, is_public, is_hidden, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $insertStmt->execute([
                 $resultId,
@@ -556,6 +557,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
                 $idOwner,
                 $isPublic,
                 $isHidden,
+                $resultTags,
             ]);
             $generationSteps[] = 'Inserted result row with ID ' . $resultId . '.';
 
