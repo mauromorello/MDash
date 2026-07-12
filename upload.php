@@ -1196,6 +1196,9 @@ if ($record && $flow === 'ai') {
                 });
 
                 const formData = new FormData(form);
+                if (acceptUploadPolicyCheckbox && acceptUploadPolicyCheckbox.checked) {
+                    formData.set('accept_upload_policy', '1');
+                }
                 xhr.open('POST', window.location.href);
                 xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                 xhr.send(formData);
