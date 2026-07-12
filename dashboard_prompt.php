@@ -308,7 +308,8 @@ function callConfiguredAiGenerateHtml(string $finalPrompt, array $aiProfile = []
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => 120,
+        CURLOPT_TIMEOUT => ($provider === 'openrouter' ? 0 : 120),
+        CURLOPT_CONNECTTIMEOUT => 30,
     ]);
 
     $response = curl_exec($ch);
@@ -763,7 +764,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         }
 
         .generation-overlay-log li::before {
-            content: 'â—‹';
+            content: '\25CB';
             color: #64748b;
             font-weight: 700;
         }
@@ -773,12 +774,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
         }
 
         .generation-overlay-log li.active::before {
-            content: 'â—';
+            content: '\25CF';
             color: #38bdf8;
         }
 
         .generation-overlay-log li.done::before {
-            content: 'âœ“';
+            content: '\2713';
             color: #22c55e;
         }
     </style>

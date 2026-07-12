@@ -331,7 +331,8 @@ function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => 120,
+        CURLOPT_TIMEOUT => ($provider === 'openrouter' ? 0 : 120),
+        CURLOPT_CONNECTTIMEOUT => 30,
     ]);
 
     $response = curl_exec($ch);

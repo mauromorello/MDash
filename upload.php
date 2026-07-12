@@ -751,7 +751,8 @@ function generateTextFromAiProfile(string $prompt, array $aiProfile): string {
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => 120,
+        CURLOPT_TIMEOUT => ($provider === 'openrouter' ? 0 : 120),
+        CURLOPT_CONNECTTIMEOUT => 30,
     ]);
 
     $response = curl_exec($ch);
@@ -1223,7 +1224,7 @@ if ($record && $flow !== '') {
                     <button type="submit" id="uploadSubmitBtn" class="btn btn-primary upload-submit-btn" disabled>Upload file</button>
 
                     <div class="upload-policy-warning">
-                        Warning: Uploaded data may be transmitted to a private server for AI processing. Review your internal company policies before uploading sensitive or regulated data.
+                        Warning: Uploaded data may be transmitted to a private server for processing and some sample data could be transmitted to an AI (selected by the user itself). Review your internal company policies before uploading sensitive or regulated data.
                     </div>
                     <label class="upload-policy-check" for="accept_upload_policy">
                         <input type="checkbox" id="accept_upload_policy" name="accept_upload_policy" value="1">
