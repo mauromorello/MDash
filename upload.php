@@ -982,8 +982,8 @@ if ($record && $flow === 'ai') {
                 <h2>Choose insert mode</h2>
                 <p>Upload ID <strong><?php echo h($record['id']); ?></strong>. Decide how to populate fields.</p>
                 <div class="choice-grid">
-                    <a class="btn btn-secondary" href="upload.php?id=<?php echo h($record['id']); ?>&flow=ai">1) Use AI and auto-fill</a>
-                    <a class="btn btn-primary" href="upload.php?id=<?php echo h($record['id']); ?>&flow=manual">2) Manual compile</a>
+                    <a class="btn btn-secondary" href="upload.php?id=<?php echo h($record['id']); ?>&flow=ai">Use AI and auto-fill</a>
+                    <a class="btn btn-primary" href="upload.php?id=<?php echo h($record['id']); ?>&flow=manual">Manual compile</a>
                 </div>
             </div>
 
@@ -1084,14 +1084,6 @@ if ($record && $flow === 'ai') {
                         <div class="field">
                             <label for="prompt_2">Prompt 2: detailed field analysis and parsing rules</label>
                             <textarea id="prompt_2" name="prompt_2" required><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
-                        </div>
-
-                        <div class="field">
-                            <label for="data_discovery_prompt">Data discovery prompt (editable)</label>
-                            <textarea id="data_discovery_prompt" name="data_discovery_prompt"><?php
-                                $savedDiscoveryPrompt = trim((string)($record['data_discovery_prompt'] ?? ''));
-                                echo h($savedDiscoveryPrompt !== '' ? $savedDiscoveryPrompt : defaultDataDiscoveryPrompt());
-                            ?></textarea>
                         </div>
 
                         <div class="field" style="margin-top:6px;">
