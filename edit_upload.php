@@ -376,6 +376,8 @@ if (!$user) {
     exit;
 }
 
+session_write_close();
+
 $dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbName = getenv('DB_NAME') ?: 'mdash';
 $dbUser = getenv('DB_USER') ?: 'root';
