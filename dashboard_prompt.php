@@ -854,7 +854,7 @@ include __DIR__ . '/header.php';
                 <div class="yarn-ball yarn-ball-c"></div>
             </div>
             <h2 class="generation-overlay-title">Generating dashboard...</h2>
-            <p class="generation-overlay-subtitle">Yarn balls are weaving the layout threads. Please wait a moment.</p>
+            <p class="generation-overlay-subtitle">Your favourite AI is working... Please wait a moment.</p>
             <div class="generation-overlay-log-panel">
                 <ul id="generationOverlayLog" class="generation-overlay-log">
                     <li>Selecting the right threads from data</li>
