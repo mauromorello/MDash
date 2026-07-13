@@ -189,7 +189,7 @@ try {
                                 <td>
                                     <div class="palette-mini-row">
                                         <?php foreach ($palette as $color): ?>
-                                            <span class="palette-mini-swatch" style="background: <?php echo h($color); ?>;"></span>
+                                            <span class="palette-mini-swatch" data-color="<?php echo h($color); ?>"></span>
                                         <?php endforeach; ?>
                                     </div>
                                 </td>
@@ -229,6 +229,10 @@ try {
     </div>
 
     <script>
+        document.querySelectorAll('.palette-mini-swatch[data-color]').forEach(function (swatch) {
+            swatch.style.backgroundColor = swatch.getAttribute('data-color') || '#000000';
+        });
+
         const logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) {
             logoutBtn.addEventListener('click', function () {

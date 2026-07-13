@@ -7,112 +7,6 @@ $pageTitle = 'Admin';
 $pageHeadExtra = <<<'HTML'
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
     <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
-    <style>
-        .admin-layout {
-            display: grid;
-            grid-template-columns: 320px 1fr;
-            gap: 16px;
-        }
-
-        .admin-sidebar,
-        .admin-main {
-            background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
-            border: 1px solid var(--border-strong);
-            border-radius: 12px;
-            padding: 14px;
-            box-shadow: var(--shadow-soft);
-        }
-
-        .admin-section-title {
-            margin: 0 0 8px;
-            font-size: 1.05rem;
-        }
-
-        .table-list {
-            display: grid;
-            gap: 6px;
-            max-height: 60vh;
-            overflow: auto;
-        }
-
-        .table-list button {
-            text-align: left;
-            background: #f8fbff;
-            color: #0f172a;
-            border: 1px solid var(--border-strong);
-            border-radius: 10px;
-        }
-
-        .table-list button.active {
-            background: linear-gradient(180deg, #e8efff 0%, #dce8ff 100%);
-            border-color: #99b1ff;
-            color: #1e40af;
-        }
-
-        .meta-note {
-            color: var(--muted);
-            font-size: 0.9rem;
-            margin: 6px 0 10px;
-        }
-
-        .admin-grid-wrap {
-            min-height: 280px;
-            border: 1px solid var(--border-strong);
-            border-radius: 10px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .schema-wrap {
-            margin-top: 10px;
-            border: 1px solid var(--border-strong);
-            border-radius: 10px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .schema-wrap table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .schema-wrap th,
-        .schema-wrap td {
-            border: 1px solid var(--border);
-            padding: 6px;
-            text-align: left;
-            font-size: 0.9rem;
-        }
-
-        .create-row-panel {
-            margin: 10px 0;
-            border: 1px solid var(--border-strong);
-            border-radius: 10px;
-            padding: 10px;
-            background: linear-gradient(180deg, #f9fbff 0%, #f2f7ff 100%);
-        }
-
-        .create-row-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .create-row-grid .field {
-            margin: 0;
-        }
-
-        @media (max-width: 1000px) {
-            .admin-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .table-list {
-                max-height: 220px;
-            }
-        }
-    </style>
 HTML;
 include __DIR__ . '/header.php';
 ?>
@@ -134,7 +28,7 @@ include __DIR__ . '/header.php';
 
             <section class="admin-main">
                 <h2 class="admin-section-title">User Management</h2>
-                <form id="createUserForm" class="card" style="margin-bottom: 12px;">
+                <form id="createUserForm" class="card admin-form-card">
                     <div class="form-grid">
                         <div class="field">
                             <label for="newUsername">Username</label>
@@ -145,7 +39,7 @@ include __DIR__ . '/header.php';
                             <input type="text" id="newUserPassword" required autocomplete="new-password">
                         </div>
                     </div>
-                    <div class="inline-actions" style="margin-bottom: 10px;">
+                    <div class="inline-actions admin-inline-actions-spaced">
                         <label><input type="checkbox" id="newIsAdmin"> Admin</label>
                         <label><input type="checkbox" id="newIsManager"> Manager</label>
                         <label><input type="checkbox" id="newIsEnabled" checked> Enabled</label>
@@ -153,17 +47,17 @@ include __DIR__ . '/header.php';
                     </div>
                     <div class="inline-actions">
                         <button type="submit">Add user</button>
-                        <div id="createUserMessage" class="meta-note" style="margin: 0;"></div>
+                        <div id="createUserMessage" class="meta-note meta-note-reset"></div>
                     </div>
                 </form>
 
                 <div class="admin-grid-wrap" id="usersGrid"></div>
 
-                <hr style="margin: 18px 0; border: 0; border-top: 1px solid var(--border);">
+                <hr class="admin-divider">
 
                 <h2 class="admin-section-title">Table Data Browser</h2>
                 <div class="admin-toolbar">
-                    <div class="field" style="margin: 0; min-width: 140px;">
+                    <div class="field admin-toolbar-field">
                         <label for="pageSizeSelect">Rows per page</label>
                         <select id="pageSizeSelect">
                             <option value="10">10</option>
@@ -177,19 +71,19 @@ include __DIR__ . '/header.php';
                 </div>
 
                 <div id="tableMeta" class="meta-note">Select a table from the left panel.</div>
-                <div id="createRowPanel" class="create-row-panel" style="display:none;">
-                    <h3 style="margin:0 0 8px; font-size:1rem;">Create New Row</h3>
+                <div id="createRowPanel" class="create-row-panel hidden">
+                    <h3 class="admin-create-row-title">Create New Row</h3>
                     <form id="createRowForm">
                         <div id="createRowFields" class="create-row-grid"></div>
                         <div class="inline-actions">
                             <button type="submit">Insert row</button>
                             <button type="button" id="cancelCreateRowBtn" class="secondary">Cancel</button>
-                            <span id="createRowMessage" class="meta-note" style="margin:0;"></span>
+                            <span id="createRowMessage" class="meta-note meta-note-reset"></span>
                         </div>
                     </form>
                 </div>
                 <div class="admin-grid-wrap" id="tableGrid"></div>
-                <div id="tableSchema" class="schema-wrap" style="display:none;"></div>
+                <div id="tableSchema" class="schema-wrap hidden"></div>
             </section>
         </div>
     </div>
@@ -258,7 +152,7 @@ include __DIR__ . '/header.php';
                     { title: 'Updated', field: 'updated_at' },
                     {
                         title: 'Delete',
-                        formatter: function () { return '<button class="btn-danger" style="padding:6px 10px;">Delete</button>'; },
+                        formatter: function () { return '<button class="btn-danger admin-delete-btn">Delete</button>'; },
                         hozAlign: 'center',
                         cellClick: function (_e, cell) {
                             const row = cell.getRow();
@@ -320,7 +214,7 @@ include __DIR__ . '/header.php';
         function renderSchema(columns) {
             const schemaWrap = document.getElementById('tableSchema');
             if (!columns || columns.length === 0) {
-                schemaWrap.style.display = 'none';
+                schemaWrap.classList.add('hidden');
                 schemaWrap.innerHTML = '';
                 return;
             }
@@ -339,7 +233,7 @@ include __DIR__ . '/header.php';
             html += '</tbody></table>';
 
             schemaWrap.innerHTML = html;
-            schemaWrap.style.display = 'block';
+            schemaWrap.classList.remove('hidden');
         }
 
         function buildTableColumns(columns, pkFields) {
@@ -372,7 +266,7 @@ include __DIR__ . '/header.php';
 
             mapped.push({
                 title: 'Delete',
-                formatter: function () { return '<button class="btn-danger" style="padding:6px 10px;">Delete</button>'; },
+                formatter: function () { return '<button class="btn-danger admin-delete-btn">Delete</button>'; },
                 hozAlign: 'center',
                 headerSort: false,
                 width: 110,
@@ -636,13 +530,13 @@ include __DIR__ . '/header.php';
             if (!panel) {
                 return;
             }
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            panel.classList.toggle('hidden');
         });
 
         document.getElementById('cancelCreateRowBtn').addEventListener('click', function () {
             const panel = document.getElementById('createRowPanel');
             if (panel) {
-                panel.style.display = 'none';
+                panel.classList.add('hidden');
             }
         });
 

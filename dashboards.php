@@ -165,7 +165,7 @@ if (!empty($_GET['created'])) {
                                 <td><?php echo h($dashboard['date_creation']); ?></td>
                                 <td>
                                     <?php if (!empty($dashboard['datasource_list'])): ?>
-                                        <div class="meta" style="white-space:pre-wrap;"><?php echo h($dashboard['datasource_list']); ?></div>
+                                        <div class="meta prewrap-meta"><?php echo h($dashboard['datasource_list']); ?></div>
                                     <?php elseif (!empty($dashboard['id_datasource'])): ?>
                                         #<?php echo h($dashboard['id_datasource']); ?>
                                         <?php if (!empty($dashboard['datasource_filename'])): ?>

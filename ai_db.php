@@ -351,7 +351,7 @@ if (!empty($_GET['created'])) {
                                     <?php if ($testStatus === 'ok'): ?>
                                         <span class="pill">OK</span>
                                     <?php elseif ($testStatus === 'error'): ?>
-                                        <span class="pill" style="background:#fee2e2;color:#b91c1c;">Error</span>
+                                        <span class="pill pill-error">Error</span>
                                     <?php else: ?>
                                         <span class="meta">Not tested</span>
                                     <?php endif; ?>

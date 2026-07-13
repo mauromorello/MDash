@@ -610,7 +610,7 @@ if ($upload) {
                                 <?php endforeach; ?>
                                 <?php if (!empty($preview['bottom_rows'])): ?>
                                     <tr>
-                                        <td colspan="<?php echo h(count($preview['header'])); ?>" style="background:#e9efff;font-weight:700;">Last 5 rows</td>
+                                        <td colspan="<?php echo h(count($preview['header'])); ?>" class="preview-last-rows-label">Last 5 rows</td>
                                     </tr>
                                     <?php foreach ($preview['bottom_rows'] as $row): ?>
                                         <tr>
@@ -637,7 +637,7 @@ if ($upload) {
                             <option value="<?php echo h((int)$profile['id']); ?>">#<?php echo h((int)$profile['id']); ?> - <?php echo h((string)$profile['title']); ?> [<?php echo h((string)$profile['provider']); ?> / <?php echo h((string)$profile['model']); ?>]</option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="inline-actions" style="margin-top:8px;">
+                    <div class="inline-actions inline-actions-top-sm">
                         <button type="button" class="secondary" id="analyzeEditAiBtn" data-upload-id="<?php echo h($upload['id']); ?>">Analizza con AI</button>
                     </div>
                 </div>
@@ -677,7 +677,7 @@ if ($upload) {
                     </div>
 
                     <div class="field">
-                        <label style="font-weight:600; display:flex; gap:8px; align-items:center;">
+                        <label class="checkbox-inline-label">
                             <input type="checkbox" name="is_public" value="1"<?php echo ((int)$upload['is_public'] === 1) ? ' checked' : ''; ?>>
                             Public dataset
                         </label>

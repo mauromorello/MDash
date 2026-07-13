@@ -454,10 +454,10 @@ try {
                 <table class="result-hub-table">
                     <thead>
                         <tr>
-                            <th style="width:78px;">Thumb</th>
+                            <th class="result-thumb-col">Thumb</th>
                             <th>Title</th>
                             <th>Owner</th>
-                            <th style="min-width:360px;">Operations</th>
+                            <th class="result-ops-col">Operations</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -553,7 +553,7 @@ try {
                 <h2 id="deleteModalTitle">Delete dashboard</h2>
                 <button type="button" class="secondary" id="deleteModalCancelTop">Cancel</button>
             </div>
-            <div class="code-modal-body" style="padding:16px;color:#e2e8f0;">
+            <div class="code-modal-body code-modal-body-muted">
                 This action will permanently delete dashboard files and database record.
             </div>
             <div class="code-modal-actions">

@@ -1338,7 +1338,7 @@ if ($record && $flow !== '') {
                                             <?php endforeach; ?>
                                             <?php if (!empty($preview['bottom_rows'])): ?>
                                                 <tr>
-                                                    <td colspan="<?php echo h(count($preview['header'])); ?>" style="background:#e9efff;font-weight:700;">Last 5 rows</td>
+                                                    <td colspan="<?php echo h(count($preview['header'])); ?>" class="preview-last-rows-label">Last 5 rows</td>
                                                 </tr>
                                                 <?php foreach ($preview['bottom_rows'] as $row): ?>
                                                     <tr>
@@ -1384,8 +1384,8 @@ if ($record && $flow !== '') {
                             <textarea id="prompt_2" name="prompt_2" required><?php echo h($record['prompt_2'] ?? ''); ?></textarea>
                         </div>
 
-                        <div class="field" style="margin-top:6px;">
-                            <label style="font-weight:600; display:flex; gap:8px; align-items:center;">
+                        <div class="field field-top-gap-sm">
+                            <label class="checkbox-inline-label">
                                 <input type="checkbox" name="is_public" value="1"<?php echo ((int)($record['is_public'] ?? 0) === 1) ? ' checked' : ''; ?>>
                                 Public dataset
                             </label>
