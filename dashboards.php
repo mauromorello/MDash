@@ -179,7 +179,6 @@ if (!empty($_GET['created'])) {
                                 <td>
                                     <div class="inline-actions">
                                         <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Generate prompt</a>
-                                        <button type="button" class="secondary preview-toggle" data-target="preview-<?php echo h($dashboard['id']); ?>">Preview prompt</button>
                                         <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Edit</a>
                                         <form method="post" onsubmit="return confirm('Delete this dashboard?');">
                                             <input type="hidden" name="action" value="delete_dashboard">
