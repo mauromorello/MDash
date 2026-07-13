@@ -98,6 +98,28 @@ a:hover { text-decoration: underline; }
 .topbar-left {
   min-width: 0;
   flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.topbar-logo-link {
+  display: inline-flex;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #43526a;
+  background: #273449;
+  flex: 0 0 auto;
+}
+
+.topbar-logo-image {
+  width: 64px;
+  height: 64px;
+  display: block;
+  object-fit: cover;
 }
 
 .topbar-role-icons {
@@ -571,6 +593,20 @@ button:disabled,
   background: transparent;
   border: 0;
   padding: 0;
+}
+
+.main-splash-section {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.main-splash-image {
+  width: min(100%, 980px);
+  display: block;
+  border-radius: 18px;
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
 }
 
 .main-sections-grid {
@@ -1701,22 +1737,6 @@ a {
   color: var(--primary);
 }
 
-.page,
-.card,
-.main-section-card,
-.main-ready-section,
-.preview-panel,
-table,
-input[type="text"],
-input[type="file"],
-textarea,
-select,
-.code-modal-shell,
-.result-card,
-.thumbnail-card,
-.config-page .panel {
-  /* background: var(--surface); */
-}
 
 .page,
 .card,

@@ -224,6 +224,10 @@ try {
 
     <div class="main-home-content">
         <div class="page main-home-panel">
+            <section class="main-splash-section" aria-label="MDash splash">
+                <img src="assets/splash.png" alt="MDash splash" class="main-splash-image">
+            </section>
+
             <section class="main-ready-section">
                 <div class="main-ready-header">
                     <h2>Dashboard Hub</h2>
