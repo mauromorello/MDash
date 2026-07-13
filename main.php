@@ -271,11 +271,7 @@ try {
                                         <img src="<?php echo h($dashboard['thumbnail_path']); ?>" alt="Thumbnail dashboard <?php echo h((int)$dashboard['id']); ?>" class="main-ready-thumb">
                                     </a>
                                     <div class="main-ready-tooltip" role="tooltip" aria-label="Dashboard details">
-                                        <div class="main-ready-tooltip-title"><?php echo h($dashboard['title']); ?></div>
                                         <div class="main-ready-tooltip-row"><span>Creator</span><strong><?php echo h($dashboard['creator']); ?></strong></div>
-                                        <div class="main-ready-tooltip-row"><span>Tags</span><strong><?php echo h($dashboard['tags']); ?></strong></div>
-                                        <div class="main-ready-tooltip-row"><span>Data</span><strong><?php echo h($dashboard['data_source']); ?></strong></div>
-                                        <div class="main-ready-tooltip-row"><span>AI Used</span><strong><?php echo h($dashboard['ai_used']); ?></strong></div>
                                         <div class="main-ready-tooltip-row"><span>Description</span><strong><?php echo h($dashboard['description']); ?></strong></div>
                                     </div>
                                     <?php if ((int)$dashboard['id_owner'] === (int)$user['id']): ?>
