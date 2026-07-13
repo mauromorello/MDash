@@ -64,7 +64,6 @@ if ($topbarIsAdmin) {
         <a href="main.php" class="topbar-logo-link" aria-label="Go to main page">
             <img src="assets/logo.png" alt="MDash logo" class="topbar-logo-image">
         </a>
-        <a href="main.php" class="brand brand-home">Mdash</a>
         <div class="info">
             <span>User: <?php echo $topbarUsername; ?></span>
             <span class="topbar-role-icons" aria-label="User permissions">
