@@ -227,66 +227,86 @@ try {
 
 
             <div class="main-sections-grid">
-                <div class="main-section-card">
-                    <h2>I miei preferiti</h2>
-                    <div class="main-action-item">
-                        <a href="templates.php?favorites=1" class="btn btn-secondary">Template <span class="main-fav-count"><?php echo h($favoriteCounts['template']); ?></span></a>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="makeup.php?favorites=1" class="btn btn-secondary">Markup <span class="main-fav-count"><?php echo h($favoriteCounts['makeup']); ?></span></a>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="database_list.php?favorites=1" class="btn btn-secondary">Data <span class="main-fav-count"><?php echo h($favoriteCounts['data']); ?></span></a>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="dashboards.php?favorites=1" class="btn btn-secondary">Dashboard <span class="main-fav-count"><?php echo h($favoriteCounts['dashboard']); ?></span></a>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="results.php?favorites=1" class="btn btn-secondary">Results <span class="main-fav-count"><?php echo h($favoriteCounts['result']); ?></span></a>
-                    </div>
-                </div>
-
                 <div class="main-section-card is-muted-config">
-                    <h2>Config</h2>
-                    <div class="main-action-item">
-                        <a href="ai_db.php" class="btn btn-secondary">AI</a>
-                        <p class="main-action-desc">Manage API keys, models, endpoints, and connection tests.</p>
+                    <div class="main-collapsible-head">
+                        <h2>Config</h2>
+                        <button type="button" class="main-collapse-toggle" data-target="mainSectionConfig" aria-expanded="true" aria-controls="mainSectionConfig">Collapse</button>
                     </div>
-                    <div class="main-action-item">
-                        <a href="templates.php" class="btn btn-secondary">Template</a>
-                        <p class="main-action-desc">Create and maintain dashboard prompt templates.</p>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="makeup.php" class="btn btn-secondary">Markup</a>
-                        <p class="main-action-desc">Define visual style profiles for generated dashboards.</p>
-                    </div>
-                </div>
-
-                <div class="main-section-card">
-                    <h2>Data Source</h2>
-                    <div class="main-action-item">
-                        <a href="upload.php" class="btn btn-primary">Upload</a>
-                        <p class="main-action-desc">Upload new files and create data source records.</p>
-                    </div>
-                    <div class="main-action-item">
-                        <a href="database_list.php" class="btn btn-secondary">Data Pool</a>
-                        <p class="main-action-desc">Browse and manage available data sources.</p>
+                    <div class="main-collapsible-body" id="mainSectionConfig">
+                        <div class="main-action-item">
+                            <a href="ai_db.php" class="btn btn-secondary">AI</a>
+                            <p class="main-action-desc">Manage API keys, models, endpoints, and connection tests.</p>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="templates.php" class="btn btn-secondary">Template</a>
+                            <p class="main-action-desc">Create and maintain dashboard prompt templates.</p>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="makeup.php" class="btn btn-secondary">Markup</a>
+                            <p class="main-action-desc">Define visual style profiles for generated dashboards.</p>
+                        </div>
                     </div>
                 </div>
 
                 <div class="main-section-card">
-                    <h2>Dashboard</h2>
-                    <div class="main-action-item">
-                        <a href="dashboard_builder.php" class="btn btn-accent">Generate</a>
-                        <p class="main-action-desc">Build dashboards by combining config and data sources.</p>
+                    <div class="main-collapsible-head">
+                        <h2>Data Source</h2>
+                        <button type="button" class="main-collapse-toggle" data-target="mainSectionData" aria-expanded="true" aria-controls="mainSectionData">Collapse</button>
                     </div>
-                    <div class="main-action-item">
-                        <a href="dashboards.php" class="btn btn-warning">Dash Pool</a>
-                        <p class="main-action-desc">Open your dashboard pool for review and edits.</p>
+                    <div class="main-collapsible-body" id="mainSectionData">
+                        <div class="main-action-item">
+                            <a href="upload.php" class="btn btn-primary">Upload</a>
+                            <p class="main-action-desc">Upload new files and create data source records.</p>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="database_list.php" class="btn btn-secondary">Data Pool</a>
+                            <p class="main-action-desc">Browse and manage available data sources.</p>
+                        </div>
                     </div>
-                    <div class="main-action-item">
-                        <a href="results.php" class="btn btn-secondary">Dashboard</a>
-                        <p class="main-action-desc">Open dashboard hub with all generated pages and operations.</p>
+                </div>
+
+                <div class="main-section-card">
+                    <div class="main-collapsible-head">
+                        <h2>Dashboard</h2>
+                        <button type="button" class="main-collapse-toggle" data-target="mainSectionDashboard" aria-expanded="true" aria-controls="mainSectionDashboard">Collapse</button>
+                    </div>
+                    <div class="main-collapsible-body" id="mainSectionDashboard">
+                        <div class="main-action-item">
+                            <a href="dashboard_builder.php" class="btn btn-accent">Generate</a>
+                            <p class="main-action-desc">Build dashboards by combining config and data sources.</p>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="dashboards.php" class="btn btn-warning">Dash Pool</a>
+                            <p class="main-action-desc">Open your dashboard pool for review and edits.</p>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="results.php" class="btn btn-secondary">Dashboard</a>
+                            <p class="main-action-desc">Open dashboard hub with all generated pages and operations.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="main-section-card">
+                    <div class="main-collapsible-head">
+                        <h2>I miei preferiti</h2>
+                        <button type="button" class="main-collapse-toggle" data-target="mainSectionFavorites" aria-expanded="true" aria-controls="mainSectionFavorites">Collapse</button>
+                    </div>
+                    <div class="main-collapsible-body" id="mainSectionFavorites">
+                        <div class="main-action-item">
+                            <a href="templates.php?favorites=1" class="btn btn-secondary">Template <span class="main-fav-count"><?php echo h($favoriteCounts['template']); ?></span></a>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="makeup.php?favorites=1" class="btn btn-secondary">Markup <span class="main-fav-count"><?php echo h($favoriteCounts['makeup']); ?></span></a>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="database_list.php?favorites=1" class="btn btn-secondary">Data <span class="main-fav-count"><?php echo h($favoriteCounts['data']); ?></span></a>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="dashboards.php?favorites=1" class="btn btn-secondary">Dashboard <span class="main-fav-count"><?php echo h($favoriteCounts['dashboard']); ?></span></a>
+                        </div>
+                        <div class="main-action-item">
+                            <a href="results.php?favorites=1" class="btn btn-secondary">Results <span class="main-fav-count"><?php echo h($favoriteCounts['result']); ?></span></a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -294,16 +314,22 @@ try {
             <section class="main-ready-section">
                 <div class="main-ready-header">
                     <h2>Dashboard Hub</h2>
-                    <a href="results.php" class="btn btn-secondary">Dashboard Hub</a>
+                    <div class="main-ready-header-actions">
+                        <?php if (!empty($readyDashboards)): ?>
+                            <div class="main-ready-filter main-ready-filter-inline">
+                                <label for="mainReadySearch" class="main-ready-filter-label sr-only">Filter by title, tags, author</label>
+                                <input type="text" id="mainReadySearch" placeholder="Type title, tags, or username..." autocomplete="off">
+                            </div>
+                        <?php endif; ?>
+                        <button type="button" class="main-collapse-toggle" data-target="mainSectionReady" aria-expanded="true" aria-controls="mainSectionReady">Collapse</button>
+                    </div>
                 </div>
+
+                <div class="main-collapsible-body" id="mainSectionReady">
 
                 <?php if (empty($readyDashboards)): ?>
                     <p class="main-action-desc">No ready dashboards available with thumbnail yet.</p>
                 <?php else: ?>
-                    <div class="main-ready-filter">
-                        <label for="mainReadySearch" class="main-ready-filter-label">Filter by title, tags, author</label>
-                        <input type="text" id="mainReadySearch" placeholder="Type title, tags, or username..." autocomplete="off">
-                    </div>
                     <div class="main-ready-grid">
                         <?php foreach ($readyDashboards as $dashboard): ?>
                             <div class="main-ready-card" data-title="<?php echo h(strtolower((string)$dashboard['title'])); ?>" data-tags="<?php echo h(strtolower((string)$dashboard['tags'])); ?>" data-creator="<?php echo h(strtolower((string)$dashboard['creator'])); ?>">
@@ -329,6 +355,7 @@ try {
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
+                </div>
             </section>
         </div>
     </div>
@@ -362,6 +389,26 @@ try {
                 });
             });
         }
+
+        const collapseButtons = document.querySelectorAll('.main-collapse-toggle');
+        collapseButtons.forEach((btn) => {
+            const targetId = btn.getAttribute('data-target');
+            if (!targetId) {
+                return;
+            }
+
+            const target = document.getElementById(targetId);
+            if (!target) {
+                return;
+            }
+
+            btn.addEventListener('click', function () {
+                const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+                btn.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+                btn.textContent = isExpanded ? 'Expand' : 'Collapse';
+                target.hidden = isExpanded;
+            });
+        });
     </script>
 </body>
 </html>

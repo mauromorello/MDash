@@ -479,7 +479,7 @@ button:disabled,
 .main-sections-grid {
   margin-top: 24px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
   gap: 16px;
 }
 
@@ -507,8 +507,56 @@ button:disabled,
   gap: 8px;
 }
 
+.main-collapsible-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.main-collapsible-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.main-collapse-toggle {
+  appearance: none;
+  border: 1px solid #8ea4d8;
+  background: linear-gradient(180deg, #f5f8ff 0%, #e9efff 100%);
+  color: #28478c;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.main-collapse-toggle:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e3ebff 100%);
+  filter: none;
+  transform: none;
+}
+
 .main-action-item .btn {
   padding: 11px 14px;
+  background: linear-gradient(180deg, #8ea8f3 0%, #6f89d3 100%);
+  border-color: #5c73be;
+  color: #ffffff;
+}
+
+.main-action-item .btn:hover {
+  filter: brightness(1.05);
+}
+
+.main-action-item .btn-warning,
+.main-action-item .btn-accent,
+.main-action-item .btn-primary,
+.main-action-item .btn-secondary {
+  color: #ffffff;
 }
 
 .main-action-desc {
@@ -548,10 +596,23 @@ button:disabled,
   gap: 12px;
 }
 
+.main-ready-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: min(460px, 100%);
+}
+
 .main-ready-filter {
   margin-bottom: 12px;
   display: grid;
   gap: 6px;
+}
+
+.main-ready-filter-inline {
+  margin-bottom: 0;
+  width: min(460px, 100%);
 }
 
 .main-ready-filter-label {
@@ -769,6 +830,14 @@ button:disabled,
   .main-ready-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .main-ready-header-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+  }
+  .main-ready-filter-inline {
+    width: 100%;
   }
   .main-ready-grid {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
