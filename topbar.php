@@ -73,8 +73,8 @@ if ($topbarIsAdmin) {
                 <?php if ($topbarCanManage): ?>
                     <span class="topbar-role-icon" title="Can manage" aria-label="Can manage">&#9881;</span>
                 <?php endif; ?>
-            </span>
-            <span>| Login: <?php echo $topbarLoginTime; ?></span>
+            </span><br>
+            <span>Login: <?php echo $topbarLoginTime; ?></span>
         </div>
     </div>
 
