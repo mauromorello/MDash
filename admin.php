@@ -138,21 +138,34 @@ include __DIR__ . '/header.php';
             return v === true || v === 1 || v === '1' ? 1 : 0;
         }
 
-        function formatCellText(cell) {
-            const value = cell.getValue();
+        function sanitizeValue(value) {
             if (value === null || value === undefined) {
-                return '';
+                return value;
+            }
+
+            if (Array.isArray(value)) {
+                return value.map(sanitizeValue);
             }
 
             if (typeof value === 'object') {
-                try {
-                    return JSON.stringify(value);
-                } catch (_e) {
-                    return String(value);
-                }
+                const out = {};
+                Object.keys(value).forEach(function (k) {
+                    out[k] = sanitizeValue(value[k]);
+                });
+                return out;
             }
 
-            return String(value).replace(/[\u0000-\u001F\u007F]/g, ' ');
+            if (typeof value === 'string') {
+                return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ');
+            }
+
+            return value;
+        }
+
+        function sanitizeRows(rows) {
+            return (rows || []).map(function (row) {
+                return sanitizeValue(row);
+            });
         }
 
         function buildUsersGrid() {
@@ -164,8 +177,8 @@ include __DIR__ . '/header.php';
                 paginationSize: 10,
                 columns: [
                     { title: 'ID', field: 'id', width: 70, hozAlign: 'right' },
-                    { title: 'Username', field: 'username', editor: 'input', formatter: formatCellText },
-                    { title: 'Email', field: 'email', editor: 'input', formatter: formatCellText },
+                    { title: 'Username', field: 'username', editor: 'input', formatter: 'plaintext' },
+                    { title: 'Email', field: 'email', editor: 'input', formatter: 'plaintext' },
                     {
                         title: 'Password',
                         field: 'password',
@@ -175,8 +188,8 @@ include __DIR__ . '/header.php';
                     { title: 'Admin', field: 'is_admin', editor: true, formatter: 'tickCross', hozAlign: 'center' },
                     { title: 'Manager', field: 'is_manager', editor: true, formatter: 'tickCross', hozAlign: 'center' },
                     { title: 'Enabled', field: 'is_enabled', editor: true, formatter: 'tickCross', hozAlign: 'center' },
-                    { title: 'Created', field: 'created_at', formatter: formatCellText },
-                    { title: 'Updated', field: 'updated_at', formatter: formatCellText },
+                    { title: 'Created', field: 'created_at', formatter: 'plaintext' },
+                    { title: 'Updated', field: 'updated_at', formatter: 'plaintext' },
                     {
                         title: 'Delete',
                         formatter: function () { return '<button class="btn-danger admin-delete-btn">Delete</button>'; },
@@ -228,7 +241,7 @@ include __DIR__ . '/header.php';
                     alert(res.message || 'Unable to load users');
                     return;
                 }
-                const rows = (res.data && res.data.users ? res.data.users : []).map(function (u) {
+                const rows = sanitizeRows((res.data && res.data.users ? res.data.users : [])).map(function (u) {
                     u.password = '';
                     return u;
                 });
@@ -286,10 +299,9 @@ include __DIR__ . '/header.php';
                     title: fieldName + (isPrimary ? ' (PK)' : ''),
                     field: fieldName,
                     editor: editor,
-                    formatter: (type.indexOf('tinyint(1)') >= 0) ? 'tickCross' : formatCellText,
+                    formatter: (type.indexOf('tinyint(1)') >= 0) ? 'tickCross' : 'plaintext',
                     headerFilter: 'input',
                     widthGrow: 1,
-                    variableHeight: true,
                 };
             });
 
@@ -380,9 +392,8 @@ include __DIR__ . '/header.php';
         function ensureTableGrid(columns, pkFields) {
             const pageSize = Number(document.getElementById('pageSizeSelect').value || 25);
             if (tableGrid) {
-                tableGrid.setColumns(buildTableColumns(columns, pkFields));
-                tableGrid.setPageSize(pageSize);
-                return;
+                tableGrid.destroy();
+                tableGrid = null;
             }
 
             tableGrid = new Tabulator('#tableGrid', {
@@ -411,7 +422,7 @@ include __DIR__ . '/header.php';
                     }
 
                     return {
-                        data: response.data.rows || [],
+                        data: sanitizeRows(response.data.rows || []),
                         last_page: response.data.last_page || 1,
                     };
                 },
