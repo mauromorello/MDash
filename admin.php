@@ -70,12 +70,7 @@ include __DIR__ . '/header.php';
 
             <section class="admin-main">
                 <h2 class="admin-section-title">User Management</h2>
-                <div class="card admin-form-card">
-                    <div class="inline-actions">
-                        <a href="admin_create_user.php" class="btn-secondary">Open user creation page</a>
-                    </div>
-                    <div class="meta-note">User creation is managed in a dedicated page. This table remains for user edits and status updates.</div>
-                </div>
+                <div class="meta-note">User creation has been moved to a dedicated page in the Admin menu.</div>
 
                 <div class="admin-grid-wrap" id="usersGrid"></div>
 
@@ -143,6 +138,23 @@ include __DIR__ . '/header.php';
             return v === true || v === 1 || v === '1' ? 1 : 0;
         }
 
+        function formatCellText(cell) {
+            const value = cell.getValue();
+            if (value === null || value === undefined) {
+                return '';
+            }
+
+            if (typeof value === 'object') {
+                try {
+                    return JSON.stringify(value);
+                } catch (_e) {
+                    return String(value);
+                }
+            }
+
+            return String(value).replace(/[\u0000-\u001F\u007F]/g, ' ');
+        }
+
         function buildUsersGrid() {
             usersGrid = new Tabulator('#usersGrid', {
                 layout: 'fitColumns',
@@ -152,8 +164,8 @@ include __DIR__ . '/header.php';
                 paginationSize: 10,
                 columns: [
                     { title: 'ID', field: 'id', width: 70, hozAlign: 'right' },
-                    { title: 'Username', field: 'username', editor: 'input', formatter: 'plaintext' },
-                    { title: 'Email', field: 'email', editor: 'input', formatter: 'plaintext' },
+                    { title: 'Username', field: 'username', editor: 'input', formatter: formatCellText },
+                    { title: 'Email', field: 'email', editor: 'input', formatter: formatCellText },
                     {
                         title: 'Password',
                         field: 'password',
@@ -163,8 +175,8 @@ include __DIR__ . '/header.php';
                     { title: 'Admin', field: 'is_admin', editor: true, formatter: 'tickCross', hozAlign: 'center' },
                     { title: 'Manager', field: 'is_manager', editor: true, formatter: 'tickCross', hozAlign: 'center' },
                     { title: 'Enabled', field: 'is_enabled', editor: true, formatter: 'tickCross', hozAlign: 'center' },
-                    { title: 'Created', field: 'created_at' },
-                    { title: 'Updated', field: 'updated_at' },
+                    { title: 'Created', field: 'created_at', formatter: formatCellText },
+                    { title: 'Updated', field: 'updated_at', formatter: formatCellText },
                     {
                         title: 'Delete',
                         formatter: function () { return '<button class="btn-danger admin-delete-btn">Delete</button>'; },
@@ -274,9 +286,10 @@ include __DIR__ . '/header.php';
                     title: fieldName + (isPrimary ? ' (PK)' : ''),
                     field: fieldName,
                     editor: editor,
-                    formatter: (type.indexOf('tinyint(1)') >= 0) ? 'tickCross' : 'plaintext',
+                    formatter: (type.indexOf('tinyint(1)') >= 0) ? 'tickCross' : formatCellText,
                     headerFilter: 'input',
                     widthGrow: 1,
+                    variableHeight: true,
                 };
             });
 
