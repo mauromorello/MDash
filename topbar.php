@@ -52,6 +52,7 @@ if ($topbarIsAdmin) {
         'label' => 'Admin',
         'items' => [
             ['href' => 'admin.php', 'label' => 'Console'],
+            ['href' => 'admin_create_user.php', 'label' => 'Create user'],
             ['href' => 'main.php', 'label' => 'Home'],
         ],
     ];

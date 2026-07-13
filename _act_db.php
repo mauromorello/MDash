@@ -113,6 +113,19 @@ function ensureAdminUsersColumns(PDO $pdo): void {
     if (!isset($columns['is_manager'])) {
         $pdo->exec('ALTER TABLE users ADD COLUMN is_manager TINYINT(1) NOT NULL DEFAULT 0');
     }
+    if (!isset($columns['email'])) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL');
+    }
+}
+
+function usersHasEmailColumn(PDO $pdo): bool {
+    if (!tableExists($pdo, 'users')) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM users LIKE 'email'");
+    $stmt->execute();
+    return (bool)$stmt->fetch();
 }
 
 function ensureTemplatesTable(PDO $pdo): void {
@@ -233,6 +246,7 @@ if ($action === 'create_db') {
             "CREATE TABLE IF NOT EXISTS users (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(100) NOT NULL UNIQUE,
+                email VARCHAR(255) NULL,
                 password_hash VARCHAR(255) NOT NULL,
                 is_admin TINYINT(1) NOT NULL DEFAULT 0,
                 is_enabled TINYINT(1) NOT NULL DEFAULT 1,
@@ -451,26 +465,36 @@ if ($action === 'delete_template') {
 }
 
 if ($action === 'list_users') {
-    $stmt = $pdo->query('SELECT id, username, is_admin, is_enabled, is_manager, created_at, updated_at FROM users ORDER BY id ASC');
+    $selectEmail = usersHasEmailColumn($pdo) ? 'email' : "'' AS email";
+    $stmt = $pdo->query('SELECT id, username, ' . $selectEmail . ', is_admin, is_enabled, is_manager, created_at, updated_at FROM users ORDER BY id ASC');
     $users = normalizeRowsForJson($stmt->fetchAll());
     respond(true, 'Utenti trovati.', ['users' => $users]);
 }
 
 if ($action === 'create_user') {
     $username = trim((string)($_POST['username'] ?? ''));
+    $email = trim((string)($_POST['email'] ?? ''));
     $password = (string)($_POST['password'] ?? '');
     $isAdmin = (int)($_POST['is_admin'] ?? 0);
     $isEnabled = (int)($_POST['is_enabled'] ?? 1);
     $isManager = (int)($_POST['is_manager'] ?? 0);
 
-    if ($username === '' || $password === '') {
-        respond(false, 'Username e password sono obbligatori.');
+    if ($username === '' || $password === '' || $email === '') {
+        respond(false, 'Username, email e password sono obbligatori.');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(false, 'Email non valida.');
     }
 
     try {
         $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, is_admin, is_enabled, is_manager, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())');
-        $stmt->execute([$username, $hash, $isAdmin, $isEnabled, $isManager]);
+        if (usersHasEmailColumn($pdo)) {
+            $stmt = $pdo->prepare('INSERT INTO users (username, email, password_hash, is_admin, is_enabled, is_manager, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())');
+            $stmt->execute([$username, $email, $hash, $isAdmin, $isEnabled, $isManager]);
+        } else {
+            $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, is_admin, is_enabled, is_manager, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())');
+            $stmt->execute([$username, $hash, $isAdmin, $isEnabled, $isManager]);
+        }
         respond(true, 'Utente creato.', ['id' => (int)$pdo->lastInsertId()]);
     } catch (Exception $e) {
         respond(false, 'Errore creazione utente: ' . $e->getMessage());
@@ -480,6 +504,7 @@ if ($action === 'create_user') {
 if ($action === 'update_user') {
     $id = (int)($_POST['id'] ?? 0);
     $username = trim((string)($_POST['username'] ?? ''));
+    $email = trim((string)($_POST['email'] ?? ''));
     $password = (string)($_POST['password'] ?? '');
     $isAdmin = isset($_POST['is_admin']) ? (int)$_POST['is_admin'] : null;
     $isEnabled = isset($_POST['is_enabled']) ? (int)$_POST['is_enabled'] : null;
@@ -493,6 +518,13 @@ if ($action === 'update_user') {
     if ($username !== '') {
         $fields[] = 'username = ?';
         $params[] = $username;
+    }
+    if ($email !== '' && usersHasEmailColumn($pdo)) {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            respond(false, 'Email non valida.');
+        }
+        $fields[] = 'email = ?';
+        $params[] = $email;
     }
     if ($password !== '') {
         $fields[] = 'password_hash = ?';

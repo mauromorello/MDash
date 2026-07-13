@@ -70,28 +70,12 @@ include __DIR__ . '/header.php';
 
             <section class="admin-main">
                 <h2 class="admin-section-title">User Management</h2>
-                <form id="createUserForm" class="card admin-form-card">
-                    <div class="form-grid">
-                        <div class="field">
-                            <label for="newUsername">Username</label>
-                            <input type="text" id="newUsername" required>
-                        </div>
-                        <div class="field">
-                            <label for="newUserPassword">Password</label>
-                            <input type="text" id="newUserPassword" required autocomplete="new-password">
-                        </div>
-                    </div>
-                    <div class="inline-actions admin-inline-actions-spaced">
-                        <label><input type="checkbox" id="newIsAdmin"> Admin</label>
-                        <label><input type="checkbox" id="newIsManager"> Manager</label>
-                        <label><input type="checkbox" id="newIsEnabled" checked> Enabled</label>
-                        <button type="button" id="generatePasswordBtn" class="secondary">Generate password</button>
-                    </div>
+                <div class="card admin-form-card">
                     <div class="inline-actions">
-                        <button type="submit">Add user</button>
-                        <div id="createUserMessage" class="meta-note meta-note-reset"></div>
+                        <a href="admin_create_user.php" class="btn-secondary">Open user creation page</a>
                     </div>
-                </form>
+                    <div class="meta-note">User creation is managed in a dedicated page. This table remains for user edits and status updates.</div>
+                </div>
 
                 <div class="admin-grid-wrap" id="usersGrid"></div>
 
@@ -149,18 +133,6 @@ include __DIR__ . '/header.php';
             return fetch('_act_db.php', { method: 'POST', body: form }).then(function (r) { return r.json(); });
         }
 
-        function generatePassword(length) {
-            const len = Number(length || 16);
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+';
-            const values = new Uint32Array(len);
-            window.crypto.getRandomValues(values);
-            let out = '';
-            for (let i = 0; i < len; i += 1) {
-                out += chars[values[i] % chars.length];
-            }
-            return out;
-        }
-
         let usersGrid = null;
         let tableGrid = null;
         let currentTableName = '';
@@ -180,7 +152,8 @@ include __DIR__ . '/header.php';
                 paginationSize: 10,
                 columns: [
                     { title: 'ID', field: 'id', width: 70, hozAlign: 'right' },
-                    { title: 'Username', field: 'username', editor: 'input' },
+                    { title: 'Username', field: 'username', editor: 'input', formatter: 'plaintext' },
+                    { title: 'Email', field: 'email', editor: 'input', formatter: 'plaintext' },
                     {
                         title: 'Password',
                         field: 'password',
@@ -217,6 +190,7 @@ include __DIR__ . '/header.php';
                     const payload = {
                         id: rowData.id,
                         username: String(rowData.username || '').trim(),
+                        email: String(rowData.email || '').trim(),
                         is_admin: normalizeBoolean(rowData.is_admin),
                         is_manager: normalizeBoolean(rowData.is_manager),
                         is_enabled: normalizeBoolean(rowData.is_enabled),
@@ -300,7 +274,7 @@ include __DIR__ . '/header.php';
                     title: fieldName + (isPrimary ? ' (PK)' : ''),
                     field: fieldName,
                     editor: editor,
-                    formatter: (type.indexOf('tinyint(1)') >= 0) ? 'tickCross' : undefined,
+                    formatter: (type.indexOf('tinyint(1)') >= 0) ? 'tickCross' : 'plaintext',
                     headerFilter: 'input',
                     widthGrow: 1,
                 };
@@ -525,36 +499,6 @@ include __DIR__ . '/header.php';
                 });
             });
         }
-
-        document.getElementById('generatePasswordBtn').addEventListener('click', function () {
-            document.getElementById('newUserPassword').value = generatePassword(16);
-            document.getElementById('createUserMessage').textContent = 'Password generated.';
-        });
-
-        document.getElementById('createUserForm').addEventListener('submit', function (evt) {
-            evt.preventDefault();
-            const payload = {
-                username: document.getElementById('newUsername').value.trim(),
-                password: document.getElementById('newUserPassword').value,
-                is_admin: document.getElementById('newIsAdmin').checked ? 1 : 0,
-                is_manager: document.getElementById('newIsManager').checked ? 1 : 0,
-                is_enabled: document.getElementById('newIsEnabled').checked ? 1 : 0,
-            };
-
-            const messageBox = document.getElementById('createUserMessage');
-            messageBox.textContent = 'Creating...';
-
-            api('create_user', payload).then(function (res) {
-                if (!res.success) {
-                    messageBox.textContent = res.message || 'Unable to create user';
-                    return;
-                }
-                messageBox.textContent = 'User created.';
-                document.getElementById('createUserForm').reset();
-                document.getElementById('newIsEnabled').checked = true;
-                loadUsers();
-            });
-        });
 
         document.getElementById('refreshTablesBtn').addEventListener('click', function () {
             loadTables();
