@@ -10,7 +10,52 @@ $topbarIsAdmin = !empty($topbarUser['is_admin']);
 $topbarRole = strtolower(trim((string)($topbarUser['role'] ?? ($_SESSION['role'] ?? 'user'))));
 $topbarCanManage = $topbarIsAdmin || ($topbarRole !== '' && $topbarRole !== 'user');
 $topbarCurrentPage = basename((string)($_SERVER['PHP_SELF'] ?? ''));
-$topbarIsMainPage = $topbarCurrentPage === 'main.php';
+
+$topbarQuickMenus = [
+    'config' => [
+        'label' => 'Config',
+        'items' => [
+            ['href' => 'ai_db.php', 'label' => 'AI'],
+            ['href' => 'templates.php', 'label' => 'Template'],
+            ['href' => 'makeup.php', 'label' => 'Markup'],
+        ],
+    ],
+    'data' => [
+        'label' => 'Data',
+        'items' => [
+            ['href' => 'upload.php', 'label' => 'Upload'],
+            ['href' => 'database_list.php', 'label' => 'Data Pool'],
+        ],
+    ],
+    'dashboards' => [
+        'label' => 'Dashboards',
+        'items' => [
+            ['href' => 'dashboard_builder.php', 'label' => 'Generate'],
+            ['href' => 'dashboards.php', 'label' => 'Dash Pool'],
+            ['href' => 'results.php', 'label' => 'Dashboard'],
+        ],
+    ],
+    'favorites' => [
+        'label' => 'Preferiti',
+        'items' => [
+            ['href' => 'templates.php?favorites=1', 'label' => 'Template'],
+            ['href' => 'makeup.php?favorites=1', 'label' => 'Markup'],
+            ['href' => 'database_list.php?favorites=1', 'label' => 'Data'],
+            ['href' => 'dashboards.php?favorites=1', 'label' => 'Dashboard'],
+            ['href' => 'results.php?favorites=1', 'label' => 'Results'],
+        ],
+    ],
+];
+
+if ($topbarIsAdmin) {
+    $topbarQuickMenus['admin'] = [
+        'label' => 'Admin',
+        'items' => [
+            ['href' => 'admin.php', 'label' => 'Console'],
+            ['href' => 'main.php', 'label' => 'Home'],
+        ],
+    ];
+}
 ?>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
@@ -32,43 +77,18 @@ $topbarIsMainPage = $topbarCurrentPage === 'main.php';
     </div>
 
     <div class="topbar-right">
-        <?php if ($topbarIsMainPage): ?>
-            <nav class="topbar-main-nav" aria-label="Main quick menus">
+        <nav class="topbar-main-nav" aria-label="Quick menus">
+            <?php foreach ($topbarQuickMenus as $menuKey => $menuConfig): ?>
                 <div class="topbar-main-nav-item">
-                    <button type="button" class="topbar-main-nav-btn" @click="mainMenuOpen = mainMenuOpen === 'config' ? '' : 'config'" :aria-expanded="(mainMenuOpen === 'config').toString()" aria-controls="topbarMainConfig">Config</button>
-                    <div id="topbarMainConfig" class="topbar-main-nav-panel" x-cloak x-show="mainMenuOpen === 'config'" x-transition.origin.top.right @click.outside="mainMenuOpen = ''">
-                        <a href="ai_db.php" @click="mainMenuOpen = ''">AI</a>
-                        <a href="templates.php" @click="mainMenuOpen = ''">Template</a>
-                        <a href="makeup.php" @click="mainMenuOpen = ''">Markup</a>
+                    <button type="button" class="topbar-main-nav-btn" @click="mainMenuOpen = mainMenuOpen === '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>' ? '' : '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>'" :aria-expanded="(mainMenuOpen === '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>').toString()" aria-controls="topbarMain<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars((string)$menuConfig['label'], ENT_QUOTES, 'UTF-8'); ?></button>
+                    <div id="topbarMain<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>" class="topbar-main-nav-panel" x-cloak x-show="mainMenuOpen === '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>'" x-transition.origin.top.right @click.outside="mainMenuOpen = ''">
+                        <?php foreach (($menuConfig['items'] ?? []) as $menuItem): ?>
+                            <a href="<?php echo htmlspecialchars((string)($menuItem['href'] ?? '#'), ENT_QUOTES, 'UTF-8'); ?>" @click="mainMenuOpen = ''"><?php echo htmlspecialchars((string)($menuItem['label'] ?? 'Menu'), ENT_QUOTES, 'UTF-8'); ?></a>
+                        <?php endforeach; ?>
                     </div>
                 </div>
-                <div class="topbar-main-nav-item">
-                    <button type="button" class="topbar-main-nav-btn" @click="mainMenuOpen = mainMenuOpen === 'data' ? '' : 'data'" :aria-expanded="(mainMenuOpen === 'data').toString()" aria-controls="topbarMainData">Data</button>
-                    <div id="topbarMainData" class="topbar-main-nav-panel" x-cloak x-show="mainMenuOpen === 'data'" x-transition.origin.top.right @click.outside="mainMenuOpen = ''">
-                        <a href="upload.php" @click="mainMenuOpen = ''">Upload</a>
-                        <a href="database_list.php" @click="mainMenuOpen = ''">Data Pool</a>
-                    </div>
-                </div>
-                <div class="topbar-main-nav-item">
-                    <button type="button" class="topbar-main-nav-btn" @click="mainMenuOpen = mainMenuOpen === 'dashboards' ? '' : 'dashboards'" :aria-expanded="(mainMenuOpen === 'dashboards').toString()" aria-controls="topbarMainDashboards">Dashboards</button>
-                    <div id="topbarMainDashboards" class="topbar-main-nav-panel" x-cloak x-show="mainMenuOpen === 'dashboards'" x-transition.origin.top.right @click.outside="mainMenuOpen = ''">
-                        <a href="dashboard_builder.php" @click="mainMenuOpen = ''">Generate</a>
-                        <a href="dashboards.php" @click="mainMenuOpen = ''">Dash Pool</a>
-                        <a href="results.php" @click="mainMenuOpen = ''">Dashboard</a>
-                    </div>
-                </div>
-                <div class="topbar-main-nav-item">
-                    <button type="button" class="topbar-main-nav-btn" @click="mainMenuOpen = mainMenuOpen === 'favorites' ? '' : 'favorites'" :aria-expanded="(mainMenuOpen === 'favorites').toString()" aria-controls="topbarMainFavorites">Preferiti</button>
-                    <div id="topbarMainFavorites" class="topbar-main-nav-panel" x-cloak x-show="mainMenuOpen === 'favorites'" x-transition.origin.top.right @click.outside="mainMenuOpen = ''">
-                        <a href="templates.php?favorites=1" @click="mainMenuOpen = ''">Template</a>
-                        <a href="makeup.php?favorites=1" @click="mainMenuOpen = ''">Markup</a>
-                        <a href="database_list.php?favorites=1" @click="mainMenuOpen = ''">Data</a>
-                        <a href="dashboards.php?favorites=1" @click="mainMenuOpen = ''">Dashboard</a>
-                        <a href="results.php?favorites=1" @click="mainMenuOpen = ''">Results</a>
-                    </div>
-                </div>
-            </nav>
-        <?php endif; ?>
+            <?php endforeach; ?>
+        </nav>
 
         <div class="topbar-hamburger-wrap">
             <button type="button" id="topbarMenuBtn" class="topbar-menu-btn" @click="open = !open" :aria-expanded="open.toString()" aria-controls="topbarMenu" aria-label="Open navigation menu">
