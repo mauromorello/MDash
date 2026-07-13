@@ -52,12 +52,10 @@ $message = '';
 $uploads = [];
 $templates = [];
 $makeups = [];
-$aiProfiles = [];
 $formData = [
     'title' => '',
     'id_datasources' => [],
     'id_makeup' => '0',
-    'id_ai_db' => '0',
     'data_filter_prompt' => '',
     'data_manipulation_prompt' => '',
     'dashboard_prompt_1' => '',
@@ -164,14 +162,8 @@ try {
     $makeupStmt->execute([(int)$user['id']]);
     $makeups = $makeupStmt->fetchAll();
 
-    mdashEnsureAiDbTable($pdo);
     mdashEnsureDashboardAiColumn($pdo);
     mdashEnsureDashboardDatasourceMapTable($pdo);
-    $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], true);
-
-    if ($formData['id_ai_db'] === '0' && !empty($aiProfiles)) {
-        $formData['id_ai_db'] = (string)$aiProfiles[0]['id'];
-    }
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -179,7 +171,6 @@ try {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_dashboard') {
     $formData['title'] = trim((string)($_POST['title'] ?? ''));
     $formData['id_makeup'] = trim((string)($_POST['id_makeup'] ?? '0'));
-    $formData['id_ai_db'] = trim((string)($_POST['id_ai_db'] ?? '0'));
     $formData['data_filter_prompt'] = trim((string)($_POST['data_filter_prompt'] ?? ''));
     $formData['data_manipulation_prompt'] = trim((string)($_POST['data_manipulation_prompt'] ?? ''));
     $formData['dashboard_prompt_1'] = trim((string)($_POST['dashboard_prompt_1'] ?? ''));
@@ -207,24 +198,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     } else {
         try {
             $idTemplate = (int)($formData['id_template'] !== '' ? $formData['id_template'] : 0);
-            $selectedAiId = (int)($formData['id_ai_db'] !== '' ? $formData['id_ai_db'] : 0);
-
-            if ($selectedAiId <= 0 && !empty($aiProfiles)) {
-                $selectedAiId = (int)$aiProfiles[0]['id'];
-            }
 
             if ((int)$formData['id_makeup'] > 0) {
                 $makeupCheckStmt = $pdo->prepare('SELECT id_makeup FROM makeup WHERE id_makeup = ? AND (id_owner = ? OR is_private = 0) LIMIT 1');
                 $makeupCheckStmt->execute([(int)$formData['id_makeup'], (int)$user['id']]);
                 if (!$makeupCheckStmt->fetch()) {
                     throw new RuntimeException('Selected makeup not found or not accessible.');
-                }
-            }
-
-            if ($selectedAiId > 0) {
-                $aiProfile = mdashFetchAccessibleAiProfile($pdo, $selectedAiId, (int)$user['id'], true);
-                if (!$aiProfile) {
-                    throw new RuntimeException('Selected AI profile not found or not accessible.');
                 }
             }
 
@@ -256,7 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 $formData['title'],
                 $legacyDatasourceId,
                 (int)($formData['id_makeup'] !== '' ? $formData['id_makeup'] : 0),
-                $selectedAiId,
+                0,
                 $formData['data_filter_prompt'],
                 $formData['data_manipulation_prompt'],
                 $formData['dashboard_prompt_1'],
@@ -327,19 +306,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                         </select>
                         <div class="meta">Choose a makeup profile to include style instructions and color palette in the final prompt.</div>
                     </div>
-                </div>
-
-                <div class="field">
-                    <label for="id_ai_db">AI profile</label>
-                    <select id="id_ai_db" name="id_ai_db">
-                        <option value="0">No AI profile</option>
-                        <?php foreach ($aiProfiles as $aiProfile): ?>
-                            <option value="<?php echo h($aiProfile['id']); ?>"<?php echo ((string)$formData['id_ai_db'] === (string)$aiProfile['id']) ? ' selected' : ''; ?>>
-                                #<?php echo h($aiProfile['id']); ?> - <?php echo h($aiProfile['title']); ?> [<?php echo h($aiProfile['provider']); ?> / <?php echo h($aiProfile['model']); ?>]<?php echo ((int)($aiProfile['id_owner'] ?? 0) !== (int)$user['id']) ? ' (created by ' . h($aiProfile['owner_username'] ?? ('user #' . $aiProfile['id_owner'])) . ')' : ''; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <div class="meta">The selected AI profile provides the API key and endpoint used during generation. Create or edit profiles in the AI Profiles library.</div>
                 </div>
 
                 <div class="field">

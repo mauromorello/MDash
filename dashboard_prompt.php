@@ -467,10 +467,6 @@ if ($pdo && $dashboardId > 0) {
 
         $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], false);
 
-        if ($selectedAiId <= 0) {
-            $selectedAiId = (int)($dashboard['id_ai_db'] ?? 0);
-        }
-
         if ($selectedAiId > 0) {
             $aiProfile = findAiProfileById($aiProfiles, $selectedAiId);
         }
