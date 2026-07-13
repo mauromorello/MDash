@@ -60,6 +60,41 @@ function utf8Length(string $value): int {
     return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
 }
 
+function shorthandToBytes(string $value): int {
+    $value = trim($value);
+    if ($value === '') {
+        return 0;
+    }
+
+    $number = (float)$value;
+    $unit = strtolower(substr($value, -1));
+    if ($unit === 'g') {
+        $number *= 1024 * 1024 * 1024;
+    } elseif ($unit === 'm') {
+        $number *= 1024 * 1024;
+    } elseif ($unit === 'k') {
+        $number *= 1024;
+    }
+
+    return (int)round($number);
+}
+
+function formatBytes(int $bytes): string {
+    if ($bytes <= 0) {
+        return '0 B';
+    }
+
+    $units = ['B', 'KB', 'MB', 'GB'];
+    $index = 0;
+    $value = (float)$bytes;
+    while ($value >= 1024 && $index < count($units) - 1) {
+        $value /= 1024;
+        $index++;
+    }
+
+    return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') . ' ' . $units[$index];
+}
+
 function ensureOptionsTable(PDO $pdo): void {
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS options (
@@ -917,13 +952,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
         }
 
         if ($message === '' && empty($_FILES['file']['name'])) {
-            $message = 'Select a valid file to upload.';
+            $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+            $postMaxSizeBytes = shorthandToBytes((string)ini_get('post_max_size'));
+            if ($contentLength > 0 && $postMaxSizeBytes > 0 && $contentLength > $postMaxSizeBytes) {
+                $message = 'The request exceeded the active PHP post_max_size limit (' . formatBytes($postMaxSizeBytes) . '). The runtime limit is lower than the value you configured, or the web server is enforcing its own cap.';
+            } elseif ($contentLength > 0 && !empty($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+                $message = 'No uploaded file reached PHP. Check the active runtime limits and the web server request-size limit.';
+            } else {
+                $message = 'Select a valid file to upload.';
+            }
         }
 
         if ($message === '' && isset($_FILES['file']['error']) && (int)$_FILES['file']['error'] !== UPLOAD_ERR_OK) {
             $uploadErr = (int)$_FILES['file']['error'];
             if ($uploadErr === UPLOAD_ERR_INI_SIZE || $uploadErr === UPLOAD_ERR_FORM_SIZE) {
-                $message = 'The selected file is too large for current PHP upload limits. Increase upload_max_filesize and post_max_size.';
+                $uploadLimit = formatBytes(shorthandToBytes((string)ini_get('upload_max_filesize')));
+                $postLimit = formatBytes(shorthandToBytes((string)ini_get('post_max_size')));
+                $message = 'The selected file is too large for the active PHP upload limits. Current runtime limits are upload_max_filesize=' . $uploadLimit . ' and post_max_size=' . $postLimit . '. If you already changed them, the web server or PHP runtime is probably using a different configuration file.';
             } elseif ($uploadErr === UPLOAD_ERR_PARTIAL) {
                 $message = 'File upload was interrupted (partial upload). Please retry.';
             } else {
