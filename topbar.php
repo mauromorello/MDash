@@ -81,7 +81,7 @@ if ($topbarIsAdmin) {
     <div class="topbar-right">
         <nav class="topbar-main-nav" aria-label="Quick menus">
             <?php foreach ($topbarQuickMenus as $menuKey => $menuConfig): ?>
-                <div class="topbar-main-nav-item">
+                <div class="topbar-main-nav-item" @mouseenter="mainMenuOpen = '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>'" @mouseleave="mainMenuOpen = ''">
                     <button type="button" class="topbar-main-nav-btn" @click="mainMenuOpen = mainMenuOpen === '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>' ? '' : '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>'" :aria-expanded="(mainMenuOpen === '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>').toString()" aria-controls="topbarMain<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars((string)$menuConfig['label'], ENT_QUOTES, 'UTF-8'); ?></button>
                     <div id="topbarMain<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>" class="topbar-main-nav-panel" x-cloak x-show="mainMenuOpen === '<?php echo htmlspecialchars((string)$menuKey, ENT_QUOTES, 'UTF-8'); ?>'" x-transition.origin.top.right @click.outside="mainMenuOpen = ''">
                         <?php foreach (($menuConfig['items'] ?? []) as $menuItem): ?>
