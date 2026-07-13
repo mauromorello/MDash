@@ -837,6 +837,13 @@ include __DIR__ . '/header.php';
     </div>
 
     <div id="generationOverlay" class="generation-overlay" aria-hidden="true">
+        <div class="generation-overlay-bg" aria-hidden="true">
+            <span class="bg-yarn-ball bg-yarn-ball-a"></span>
+            <span class="bg-yarn-ball bg-yarn-ball-b"></span>
+            <span class="bg-yarn-ball bg-yarn-ball-c"></span>
+            <span class="bg-yarn-ball bg-yarn-ball-d"></span>
+            <span class="bg-yarn-ball bg-yarn-ball-e"></span>
+        </div>
         <div class="generation-overlay-content">
             <div class="yarn-loader" aria-hidden="true">
                 <div class="yarn-thread yarn-thread-a"></div>
@@ -847,14 +854,14 @@ include __DIR__ . '/header.php';
                 <div class="yarn-ball yarn-ball-c"></div>
             </div>
             <h2 class="generation-overlay-title">Generating dashboard...</h2>
-            <p class="generation-overlay-subtitle">I gomitoli stanno intrecciando i fili del layout. Attendi qualche istante.</p>
+            <p class="generation-overlay-subtitle">Yarn balls are weaving the layout threads. Please wait a moment.</p>
             <div class="generation-overlay-log-panel">
                 <ul id="generationOverlayLog" class="generation-overlay-log">
-                    <li>Scelgo i fili giusti dai dati</li>
-                    <li>Controllo il profilo AI selezionato</li>
-                    <li>Intreccio prompt e stile</li>
-                    <li>Attendo la risposta del modello</li>
-                    <li>Chiudo il tessuto del dashboard</li>
+                    <li>Selecting the right threads from data</li>
+                    <li>Checking the selected AI profile</li>
+                    <li>Weaving prompt and style</li>
+                    <li>Waiting for model response</li>
+                    <li>Finishing the dashboard fabric</li>
                 </ul>
             </div>
         </div>

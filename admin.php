@@ -69,13 +69,6 @@ include __DIR__ . '/header.php';
             </aside>
 
             <section class="admin-main">
-                <h2 class="admin-section-title">User Management</h2>
-                <div class="meta-note">User creation has been moved to a dedicated page in the Admin menu.</div>
-
-                <div class="admin-grid-wrap" id="usersGrid"></div>
-
-                <hr class="admin-divider">
-
                 <h2 class="admin-section-title">Table Data Browser</h2>
                 <div class="admin-toolbar">
                     <div class="field admin-toolbar-field">
@@ -128,7 +121,6 @@ include __DIR__ . '/header.php';
             return fetch('_act_db.php', { method: 'POST', body: form }).then(function (r) { return r.json(); });
         }
 
-        let usersGrid = null;
         let tableGrid = null;
         let currentTableName = '';
         let currentSchema = [];
@@ -165,90 +157,6 @@ include __DIR__ . '/header.php';
         function sanitizeRows(rows) {
             return (rows || []).map(function (row) {
                 return sanitizeValue(row);
-            });
-        }
-
-        function buildUsersGrid() {
-            usersGrid = new Tabulator('#usersGrid', {
-                layout: 'fitColumns',
-                placeholder: 'No users found',
-                pagination: true,
-                paginationMode: 'local',
-                paginationSize: 10,
-                columns: [
-                    { title: 'ID', field: 'id', width: 70, hozAlign: 'right' },
-                    { title: 'Username', field: 'username', editor: 'input', formatter: 'plaintext' },
-                    { title: 'Email', field: 'email', editor: 'input', formatter: 'plaintext' },
-                    {
-                        title: 'Password',
-                        field: 'password',
-                        editor: 'input',
-                        formatter: function () { return ''; },
-                    },
-                    { title: 'Admin', field: 'is_admin', editor: true, formatter: 'tickCross', hozAlign: 'center' },
-                    { title: 'Manager', field: 'is_manager', editor: true, formatter: 'tickCross', hozAlign: 'center' },
-                    { title: 'Enabled', field: 'is_enabled', editor: true, formatter: 'tickCross', hozAlign: 'center' },
-                    { title: 'Created', field: 'created_at', formatter: 'plaintext' },
-                    { title: 'Updated', field: 'updated_at', formatter: 'plaintext' },
-                    {
-                        title: 'Delete',
-                        formatter: function () { return '<button class="btn-danger admin-delete-btn">Delete</button>'; },
-                        hozAlign: 'center',
-                        cellClick: function (_e, cell) {
-                            const row = cell.getRow();
-                            const data = row.getData();
-                            if (!confirm('Delete user "' + data.username + '"?')) {
-                                return;
-                            }
-                            api('delete_user', { id: data.id }).then(function (res) {
-                                if (!res.success) {
-                                    alert(res.message || 'Delete failed');
-                                    return;
-                                }
-                                row.delete();
-                            });
-                        }
-                    }
-                ],
-                cellEdited: function (cell) {
-                    const rowData = cell.getRow().getData();
-                    const payload = {
-                        id: rowData.id,
-                        username: String(rowData.username || '').trim(),
-                        email: String(rowData.email || '').trim(),
-                        is_admin: normalizeBoolean(rowData.is_admin),
-                        is_manager: normalizeBoolean(rowData.is_manager),
-                        is_enabled: normalizeBoolean(rowData.is_enabled),
-                    };
-                    if (String(rowData.password || '').trim() !== '') {
-                        payload.password = rowData.password;
-                    }
-                    api('update_user', payload).then(function (res) {
-                        if (!res.success) {
-                            alert(res.message || 'Update failed');
-                            loadUsers();
-                            return;
-                        }
-                        loadUsers();
-                    });
-                }
-            });
-        }
-
-        function loadUsers() {
-            api('list_users').then(function (res) {
-                if (!res.success) {
-                    alert(res.message || 'Unable to load users');
-                    return;
-                }
-                const rows = sanitizeRows((res.data && res.data.users ? res.data.users : [])).map(function (u) {
-                    u.password = '';
-                    return u;
-                });
-                if (!usersGrid) {
-                    buildUsersGrid();
-                }
-                usersGrid.setData(rows);
             });
         }
 
@@ -623,7 +531,6 @@ include __DIR__ . '/header.php';
             });
         }
 
-        loadUsers();
         loadTables();
     </script>
 </body>
