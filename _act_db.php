@@ -5,7 +5,20 @@ require_once __DIR__ . '/ai_shared.php';
 header('Content-Type: application/json');
 
 function respond(bool $success, string $message, array $data = []){
-    echo json_encode(['success'=>$success,'message'=>$message,'data'=>$data]);
+    $payload = ['success' => $success, 'message' => $message, 'data' => $data];
+    $jsonFlags = JSON_UNESCAPED_UNICODE;
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+        $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+    }
+    $json = json_encode($payload, $jsonFlags);
+    if ($json === false) {
+        $json = json_encode([
+            'success' => false,
+            'message' => 'Errore serializzazione JSON.',
+            'data' => ['json_error' => json_last_error_msg()],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    echo $json;
     exit;
 }
 
@@ -54,6 +67,52 @@ function getPrimaryKeys(PDO $pdo, string $table): array {
         }
     }
     return $primaryKeys;
+}
+
+function normalizeForJson($value) {
+    if (is_array($value)) {
+        $normalized = [];
+        foreach ($value as $k => $v) {
+            $normalized[$k] = normalizeForJson($v);
+        }
+        return $normalized;
+    }
+
+    if ($value instanceof DateTimeInterface) {
+        return $value->format('Y-m-d H:i:s');
+    }
+
+    if (is_string($value) && !preg_match('//u', $value)) {
+        return '[binary ' . strlen($value) . ' bytes]';
+    }
+
+    return $value;
+}
+
+function normalizeRowsForJson(array $rows): array {
+    return normalizeForJson($rows);
+}
+
+function ensureAdminUsersColumns(PDO $pdo): void {
+    if (!tableExists($pdo, 'users')) {
+        return;
+    }
+
+    $columnsStmt = $pdo->query('SHOW COLUMNS FROM users');
+    $columns = [];
+    foreach ($columnsStmt->fetchAll() as $col) {
+        $columns[(string)$col['Field']] = true;
+    }
+
+    if (!isset($columns['is_admin'])) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0');
+    }
+    if (!isset($columns['is_enabled'])) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN is_enabled TINYINT(1) NOT NULL DEFAULT 1');
+    }
+    if (!isset($columns['is_manager'])) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN is_manager TINYINT(1) NOT NULL DEFAULT 0');
+    }
 }
 
 function ensureTemplatesTable(PDO $pdo): void {
@@ -154,6 +213,7 @@ function canFavoriteEntity(PDO $pdo, int $userId, string $favoriteType, int $fav
 
 try {
     $pdo = pdoConnect($dbHost, $dbUser, $dbPass, $dbName);
+    ensureAdminUsersColumns($pdo);
 } catch (Exception $e) {
     // allow create_db which doesn't need existing DB
     if (($action ?? '') !== 'create_db') {
@@ -392,7 +452,7 @@ if ($action === 'delete_template') {
 
 if ($action === 'list_users') {
     $stmt = $pdo->query('SELECT id, username, is_admin, is_enabled, is_manager, created_at, updated_at FROM users ORDER BY id ASC');
-    $users = $stmt->fetchAll();
+    $users = normalizeRowsForJson($stmt->fetchAll());
     respond(true, 'Utenti trovati.', ['users' => $users]);
 }
 
@@ -499,7 +559,7 @@ if ($action === 'get_rows') {
     $stmt = $pdo->prepare("SELECT * FROM `{$safeTable}` LIMIT ?");
     $stmt->bindValue(1, $limit, PDO::PARAM_INT);
     $stmt->execute();
-    $rows = $stmt->fetchAll();
+    $rows = normalizeRowsForJson($stmt->fetchAll());
     respond(true, 'Record ottenuti.', ['rows'=>$rows]);
 }
 
@@ -525,7 +585,7 @@ if ($action === 'get_rows_paginated') {
     $rowsStmt->bindValue(':limit', $pageSize, PDO::PARAM_INT);
     $rowsStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $rowsStmt->execute();
-    $rows = $rowsStmt->fetchAll();
+    $rows = normalizeRowsForJson($rowsStmt->fetchAll());
 
     $lastPage = max(1, (int)ceil($totalRows / $pageSize));
     respond(true, 'Record paginati ottenuti.', [
@@ -664,7 +724,7 @@ if ($action === 'create_row_dynamic') {
     foreach ($schemaRows as $schemaCol) {
         $field = (string)($schemaCol['Field'] ?? '');
         $extra = strtolower((string)($schemaCol['Extra'] ?? ''));
-        if ($field === '' || str_contains($extra, 'auto_increment')) {
+        if ($field === '' || strpos($extra, 'auto_increment') !== false) {
             continue;
         }
         $allowedColumns[$field] = [

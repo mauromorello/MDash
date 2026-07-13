@@ -2,7 +2,49 @@
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
-<?php
+    header('Location: index.php');
+    exit;
+}
+
+function getUserFromSessionOrCookie() {
+    if (!empty($_SESSION['user_id']) && !empty($_SESSION['username'])) {
+        return [
+            'id' => (int)$_SESSION['user_id'],
+            'username' => (string)$_SESSION['username'],
+            'login_time' => $_SESSION['login_time'] ?? null,
+            'is_admin' => (int)($_SESSION['is_admin'] ?? 0),
+            'role' => (string)($_SESSION['role'] ?? 'user'),
+        ];
+    }
+
+    if (!empty($_COOKIE['mdash_user'])) {
+        $cookieUser = json_decode(urldecode($_COOKIE['mdash_user']), true);
+        if (is_array($cookieUser) && !empty($cookieUser['id'])) {
+            return [
+                'id' => (int)$cookieUser['id'],
+                'username' => (string)($cookieUser['username'] ?? 'user'),
+                'login_time' => $cookieUser['login_time'] ?? null,
+                'is_admin' => (int)($cookieUser['is_admin'] ?? 0),
+                'role' => (string)($cookieUser['role'] ?? 'user'),
+            ];
+        }
+    }
+
+    return null;
+}
+
+$user = getUserFromSessionOrCookie();
+if (!$user) {
+    header('Location: index.php');
+    exit;
+}
+
+if ((int)($user['is_admin'] ?? 0) !== 1) {
+    http_response_code(403);
+    echo 'Forbidden';
+    exit;
+}
+
 $pageTitle = 'Admin';
 $pageHeadExtra = <<<'HTML'
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
@@ -599,6 +641,19 @@ include __DIR__ . '/header.php';
                 page_size: pageSize,
             });
         });
+
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', function () {
+                fetch('_act.php', {
+                    method: 'POST',
+                    body: new URLSearchParams({ action: 'logout' })
+                }).finally(() => {
+                    document.cookie = 'mdash_user=; path=/; max-age=0';
+                    window.location.href = 'index.php';
+                });
+            });
+        }
 
         loadUsers();
         loadTables();

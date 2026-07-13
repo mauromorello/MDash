@@ -7,6 +7,7 @@ if ($key !== $expectedKey) {
     include __DIR__ . '/header.php';
     ?>
 <body>
+<?php include __DIR__ . '/topbar.php'; ?>
 <div class="config-page"><a href="main.php" class="brand-home">Mdash</a><h1>Unauthorized access</h1><p>Missing or invalid key parameter.</p></div>
 </body>
 </html>
@@ -175,6 +176,7 @@ function h($value) {
 ?>
 <?php $pageTitle = 'Config helper'; include __DIR__ . '/header.php'; ?>
 <body>
+<?php include __DIR__ . '/topbar.php'; ?>
 <div class="config-page">
     <a href="main.php" class="brand-home">Mdash</a>
     <h1>Technical configuration</h1>

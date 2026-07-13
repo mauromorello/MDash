@@ -97,6 +97,7 @@ a:hover { text-decoration: underline; }
 
 .topbar-left {
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .topbar-role-icons {
@@ -119,6 +120,7 @@ a:hover { text-decoration: underline; }
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .topbar-main-nav-item {
@@ -151,7 +153,7 @@ a:hover { text-decoration: underline; }
 
 .topbar-main-nav-panel {
   position: absolute;
-  left: 0;
+  right: 0;
   top: calc(100% + 8px);
   min-width: 170px;
   background: #0f172a;
@@ -181,7 +183,18 @@ a:hover { text-decoration: underline; }
 }
 
 .topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.topbar-hamburger-wrap {
   position: relative;
+  flex: 0 0 auto;
 }
 
 .topbar-menu-btn {
@@ -909,20 +922,23 @@ button:disabled,
     width: min(88vw, 300px);
   }
   .topbar-main-nav {
-    width: 100%;
+    width: auto;
     gap: 6px;
+    justify-content: flex-end;
   }
   .topbar-main-nav-item {
-    flex: 1 1 calc(50% - 6px);
+    flex: 0 1 auto;
   }
   .topbar-main-nav-btn {
-    width: 100%;
+    width: auto;
   }
   .topbar-main-nav-panel {
-    position: static;
-    margin-top: 6px;
-    min-width: 0;
-    width: 100%;
+    position: absolute;
+    margin-top: 0;
+    min-width: 160px;
+    width: auto;
+    right: 0;
+    left: auto;
   }
   .main-home-content {
     padding: 14px;
