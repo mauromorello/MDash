@@ -2,54 +2,9 @@
 session_start();
 
 if (empty($_COOKIE['mdash_user'])) {
-    header('Location: index.php');
-    exit;
-}
-
-function getUserFromCookie(){
-    if (!empty($_SESSION['user_id'])) {
-        return [
-            'id' => $_SESSION['user_id'],
-            'username' => $_SESSION['username'] ?? 'user',
-            'is_admin' => $_SESSION['is_admin'] ?? 0,
-            'login_time' => $_SESSION['login_time'] ?? null,
-        ];
-    }
-    if (empty($_COOKIE['mdash_user'])) {
-        return null;
-    }
-    $u = json_decode(urldecode($_COOKIE['mdash_user']), true);
-    if (!is_array($u) || empty($u['id'])) {
-        return null;
-    }
-    return [
-        'id' => (int)$u['id'],
-        'username' => $u['username'] ?? 'user',
-        'is_admin' => (int)($u['is_admin'] ?? 0),
-        'login_time' => $u['login_time'] ?? null,
-    ];
-}
-
-$me = getUserFromCookie();
-if (!$me) {
-    header('Location: index.php');
-    exit;
-}
-if ((int)$me['is_admin'] !== 1) {
-    echo "<h2>Unauthorized access</h2><p>You need admin privileges.</p>";
-    exit;
-}
-
-$user = $me;
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Admin</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
+<?php
+$pageTitle = 'Admin';
+$pageHeadExtra = <<<'HTML'
     <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
     <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
     <style>
@@ -66,22 +21,6 @@ $user = $me;
             border-radius: 12px;
             padding: 14px;
             box-shadow: var(--shadow-soft);
-        }
-
-        .admin-title {
-            margin: 0 0 8px;
-        }
-
-        .admin-toolbar {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
-
-        .admin-toolbar input,
-        .admin-toolbar select {
-            min-width: 160px;
         }
 
         .admin-section-title {
@@ -168,12 +107,15 @@ $user = $me;
             .admin-layout {
                 grid-template-columns: 1fr;
             }
+
             .table-list {
                 max-height: 220px;
             }
         }
     </style>
-</head>
+HTML;
+include __DIR__ . '/header.php';
+?>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
 

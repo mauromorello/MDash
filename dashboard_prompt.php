@@ -729,15 +729,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
     $promptTitle = trim((string)($_POST['prompt_title'] ?? $promptTitle));
     $masterPrompt = trim((string)($_POST['master_prompt'] ?? $masterPrompt));
 }
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Prompt</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
+<?php
+$pageTitle = 'Dashboard Prompt';
+$pageHeadExtra = <<<'HTML'
     <style>
         .generation-overlay {
             position: fixed;
@@ -829,7 +823,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
             color: #22c55e;
         }
     </style>
-</head>
+HTML;
+include __DIR__ . '/header.php';
+?>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
 

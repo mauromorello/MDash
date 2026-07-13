@@ -113,15 +113,7 @@ if (!empty($_GET['created'])) {
     $message = 'Dashboard updated successfully.';
 }
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard List</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
-</head>
+<?php $pageTitle = 'Dashboard List'; include __DIR__ . '/header.php'; ?>
 <body>
     <?php include __DIR__ . '/topbar.php'; ?>
 

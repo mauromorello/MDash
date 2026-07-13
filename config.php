@@ -3,9 +3,14 @@ $key = $_GET['key'] ?? $_POST['key'] ?? '';
 $expectedKey = 'lskfdjsdkfjeijrnsdnfmndmf';
 if ($key !== $expectedKey) {
     http_response_code(403);
-    $appCssVersion = (string)@filemtime(__DIR__ . '/assets/app.css');
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Config access denied</title><script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css?v=' . htmlspecialchars($appCssVersion, ENT_QUOTES, 'UTF-8') . '"></head><body><div class="config-page"><a href="main.php" class="brand-home">Mdash</a><h1>Unauthorized access</h1><p>Missing or invalid key parameter.</p></div></body></html>';
+    $pageTitle = 'Config access denied';
+    include __DIR__ . '/header.php';
+    ?>
+<body>
+<div class="config-page"><a href="main.php" class="brand-home">Mdash</a><h1>Unauthorized access</h1><p>Missing or invalid key parameter.</p></div>
+</body>
+</html>
+<?php
     exit;
 }
 
@@ -164,16 +169,8 @@ if (is_readable($deployLogPath)) {
 function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
-
-?><!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Config helper</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-<link rel="stylesheet" href="assets/app.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.css'); ?>">
-</head>
+?>
+<?php $pageTitle = 'Config helper'; include __DIR__ . '/header.php'; ?>
 <body>
 <div class="config-page">
     <a href="main.php" class="brand-home">Mdash</a>
