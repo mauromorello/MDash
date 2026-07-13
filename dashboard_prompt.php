@@ -729,7 +729,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'previ
     $promptTitle = trim((string)($_POST['prompt_title'] ?? $promptTitle));
     $masterPrompt = trim((string)($_POST['master_prompt'] ?? $masterPrompt));
 }
-<?php
+
 $pageTitle = 'Dashboard Prompt';
 $pageHeadExtra = <<<'HTML'
     <style>
