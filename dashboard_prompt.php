@@ -837,17 +837,24 @@ include __DIR__ . '/header.php';
     </div>
 
     <div id="generationOverlay" class="generation-overlay" aria-hidden="true">
-        <canvas id="generationCanvas"></canvas>
         <div class="generation-overlay-content">
-            <h2 class="generation-overlay-title">Dashboard generation in progress</h2>
-            <p class="generation-overlay-subtitle">Running generation pipeline, please wait...</p>
+            <div class="yarn-loader" aria-hidden="true">
+                <div class="yarn-thread yarn-thread-a"></div>
+                <div class="yarn-thread yarn-thread-b"></div>
+                <div class="yarn-thread yarn-thread-c"></div>
+                <div class="yarn-ball yarn-ball-a"></div>
+                <div class="yarn-ball yarn-ball-b"></div>
+                <div class="yarn-ball yarn-ball-c"></div>
+            </div>
+            <h2 class="generation-overlay-title">Generating dashboard...</h2>
+            <p class="generation-overlay-subtitle">I gomitoli stanno intrecciando i fili del layout. Attendi qualche istante.</p>
             <div class="generation-overlay-log-panel">
                 <ul id="generationOverlayLog" class="generation-overlay-log">
-                    <li>Preparing dashboard inputs</li>
-                    <li>Validating selected AI profile</li>
-                    <li>Sending request to AI provider</li>
-                    <li>Waiting for AI response</li>
-                    <li>Finalizing generated output</li>
+                    <li>Scelgo i fili giusti dai dati</li>
+                    <li>Controllo il profilo AI selezionato</li>
+                    <li>Intreccio prompt e stile</li>
+                    <li>Attendo la risposta del modello</li>
+                    <li>Chiudo il tessuto del dashboard</li>
                 </ul>
             </div>
         </div>
@@ -855,13 +862,11 @@ include __DIR__ . '/header.php';
 
     <script>
         const overlay = document.getElementById('generationOverlay');
-        const canvas = document.getElementById('generationCanvas');
         const logList = document.getElementById('generationOverlayLog');
         const generateForm = document.getElementById('generateDashboardForm');
         const generateBtn = document.getElementById('generateDashboardBtn');
 
         let logTimer = null;
-        let animationHandle = null;
         let submitting = false;
 
         function startLogProgress() {
@@ -906,110 +911,6 @@ include __DIR__ . '/header.php';
             }
         }
 
-        function startCanvasAnimation() {
-            if (!canvas) {
-                return;
-            }
-
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                return;
-            }
-
-            const points = [];
-            const pointCount = 90;
-
-            function resizeCanvas() {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            }
-
-            function seedPoints() {
-                points.length = 0;
-                for (let i = 0; i < pointCount; i += 1) {
-                    points.push({
-                        x: Math.random() * canvas.width,
-                        y: Math.random() * canvas.height,
-                        vx: (Math.random() - 0.5) * 0.75,
-                        vy: (Math.random() - 0.5) * 0.75,
-                        r: Math.random() * 2 + 0.8
-                    });
-                }
-            }
-
-            function drawScene(ts) {
-                ctx.fillStyle = 'rgba(2, 6, 23, 0.35)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                const cx = canvas.width * 0.5;
-                const cy = canvas.height * 0.5;
-                const ringRadius = Math.min(canvas.width, canvas.height) * 0.2;
-
-                ctx.save();
-                ctx.translate(cx, cy);
-                ctx.rotate(ts * 0.00025);
-                for (let i = 0; i < 4; i += 1) {
-                    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
-                    ctx.lineWidth = 1.2;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, ringRadius + i * 24, 0, Math.PI * 1.6);
-                    ctx.stroke();
-                    ctx.rotate(Math.PI / 2);
-                }
-                ctx.restore();
-
-                for (let i = 0; i < points.length; i += 1) {
-                    const p = points[i];
-                    p.x += p.vx;
-                    p.y += p.vy;
-
-                    if (p.x < 0 || p.x > canvas.width) {
-                        p.vx *= -1;
-                    }
-                    if (p.y < 0 || p.y > canvas.height) {
-                        p.vy *= -1;
-                    }
-
-                    ctx.fillStyle = 'rgba(125, 211, 252, 0.95)';
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    for (let j = i + 1; j < points.length; j += 1) {
-                        const q = points[j];
-                        const dx = p.x - q.x;
-                        const dy = p.y - q.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist < 120) {
-                            ctx.strokeStyle = 'rgba(56, 189, 248,' + (0.22 - dist / 800) + ')';
-                            ctx.lineWidth = 1;
-                            ctx.beginPath();
-                            ctx.moveTo(p.x, p.y);
-                            ctx.lineTo(q.x, q.y);
-                            ctx.stroke();
-                        }
-                    }
-                }
-
-                animationHandle = window.requestAnimationFrame(drawScene);
-            }
-
-            resizeCanvas();
-            seedPoints();
-            window.addEventListener('resize', function () {
-                resizeCanvas();
-                seedPoints();
-            }, { once: true });
-            animationHandle = window.requestAnimationFrame(drawScene);
-        }
-
-        function stopCanvasAnimation() {
-            if (animationHandle) {
-                window.cancelAnimationFrame(animationHandle);
-                animationHandle = null;
-            }
-        }
-
         function showGenerationOverlay() {
             if (!overlay) {
                 return;
@@ -1018,7 +919,6 @@ include __DIR__ . '/header.php';
             overlay.classList.add('active');
             overlay.setAttribute('aria-hidden', 'false');
             startLogProgress();
-            startCanvasAnimation();
         }
 
         function hideGenerationOverlay() {
@@ -1029,7 +929,6 @@ include __DIR__ . '/header.php';
             overlay.classList.remove('active');
             overlay.setAttribute('aria-hidden', 'true');
             stopLogProgress();
-            stopCanvasAnimation();
         }
 
         if (generateForm) {
