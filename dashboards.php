@@ -152,7 +152,6 @@ if (!empty($_GET['created'])) {
                             <th>Created At</th>
                             <th>Data Source</th>
                             <th>Makeup ID</th>
-                            <th>AI Profile</th>
                             <th>Template ID</th>
                             <th>Actions</th>
                         </tr>
@@ -176,16 +175,6 @@ if (!empty($_GET['created'])) {
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo h($dashboard['id_makeup']); ?></td>
-                                <td>
-                                    <?php if (!empty($dashboard['id_ai_db'])): ?>
-                                        #<?php echo h($dashboard['id_ai_db']); ?>
-                                        <?php if (!empty($dashboard['ai_title'])): ?>
-                                            <div class="meta"><?php echo h($dashboard['ai_title']); ?><?php echo !empty($dashboard['ai_provider']) || !empty($dashboard['ai_model']) ? ' (' . h($dashboard['ai_provider']) . ' / ' . h($dashboard['ai_model']) . ')' : ''; ?></div>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        -
-                                    <?php endif; ?>
-                                </td>
                                 <td><?php echo h($dashboard['id_template']); ?></td>
                                 <td>
                                     <div class="inline-actions">
