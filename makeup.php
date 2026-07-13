@@ -35,6 +35,8 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 function normalizePalette(string $paletteRaw): array {
     $default = ['#2563EB', '#0F766E', '#7C3AED', '#F59E0B', '#DC2626'];
     $decoded = json_decode($paletteRaw, true);
@@ -76,6 +78,7 @@ $error = '';
 $message = '';
 $rows = [];
 $showHidden = isset($_GET['show_hidden']) && (int)$_GET['show_hidden'] === 1;
+$favoritesOnly = isset($_GET['favorites']) && (int)$_GET['favorites'] === 1;
 
 try {
     $pdo = new PDO(
@@ -103,6 +106,15 @@ try {
             INDEX idx_makeup_private_hidden (is_private, is_hidden)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+    mdashEnsureFavoritesTable($pdo);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_favorite') {
+        $idMakeup = (int)($_POST['id_makeup'] ?? 0);
+        if ($idMakeup > 0) {
+            mdashToggleFavorite($pdo, (int)$user['id'], 'makeup', $idMakeup);
+            $message = 'Favorite updated.';
+        }
+    }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_hidden') {
         $idMakeup = (int)($_POST['id_makeup'] ?? 0);
@@ -126,12 +138,19 @@ try {
 
     $stmt = $pdo->prepare(
         'SELECT m.*, u.username AS owner_username
+                , CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite
          FROM makeup m
          LEFT JOIN users u ON u.id = m.id_owner
+         LEFT JOIN user_favorites f ON f.favorite_type = "makeup" AND f.favorite_id = m.id_makeup AND f.id_owner = :favorite_owner
          WHERE ' . $where . '
+           AND (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
          ORDER BY m.id_makeup DESC'
     );
-    $stmt->execute(['user_id' => (int)$user['id']]);
+    $stmt->execute([
+        'user_id' => (int)$user['id'],
+        'favorite_owner' => (int)$user['id'],
+        'favorites_only' => $favoritesOnly ? 1 : 0,
+    ]);
     $rows = $stmt->fetchAll();
 } catch (Throwable $e) {
     $error = $e->getMessage();
@@ -149,10 +168,15 @@ try {
             </div>
             <div class="inline-actions">
                 <a href="insert_makeup.php">New makeup</a>
-                <?php if ($showHidden): ?>
-                    <a href="makeup.php">Hide hidden</a>
+                <?php if ($favoritesOnly): ?>
+                    <a href="makeup.php<?php echo $showHidden ? '?show_hidden=1' : ''; ?>">All items</a>
                 <?php else: ?>
-                    <a href="makeup.php?show_hidden=1">Reveal hidden</a>
+                    <a href="makeup.php?favorites=1<?php echo $showHidden ? '&show_hidden=1' : ''; ?>">Only favorites</a>
+                <?php endif; ?>
+                <?php if ($showHidden): ?>
+                    <a href="makeup.php<?php echo $favoritesOnly ? '?favorites=1' : ''; ?>">Hide hidden</a>
+                <?php else: ?>
+                    <a href="makeup.php?show_hidden=1<?php echo $favoritesOnly ? '&favorites=1' : ''; ?>">Reveal hidden</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -172,6 +196,7 @@ try {
                 <table>
                     <thead>
                         <tr>
+                            <th>Fav</th>
                             <th>ID</th>
                             <th>Name</th>
                             <th>Palette</th>
@@ -184,6 +209,13 @@ try {
                         <?php foreach ($rows as $row): ?>
                             <?php $palette = normalizePalette((string)($row['palette'] ?? '[]')); ?>
                             <tr>
+                                <td>
+                                    <form method="post">
+                                        <input type="hidden" name="action" value="toggle_favorite">
+                                        <input type="hidden" name="id_makeup" value="<?php echo h($row['id_makeup']); ?>">
+                                        <button type="submit" class="favorite-btn<?php echo (int)($row['is_favorite'] ?? 0) === 1 ? ' is-active' : ''; ?>" title="Toggle favorite" aria-label="Toggle favorite"><?php echo (int)($row['is_favorite'] ?? 0) === 1 ? '&#9733;' : '&#9734;'; ?></button>
+                                    </form>
+                                </td>
                                 <td><?php echo h($row['id_makeup']); ?></td>
                                 <td><?php echo h($row['name']); ?></td>
                                 <td>

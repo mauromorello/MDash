@@ -33,6 +33,8 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+require_once __DIR__ . '/ai_shared.php';
+
 $user = getUserFromSessionOrCookie();
 if (!$user) {
     header('Location: index.php');
@@ -47,6 +49,7 @@ $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 $pdo = null;
 $uploads = [];
 $message = '';
+$favoritesOnly = isset($_GET['favorites']) && (int)$_GET['favorites'] === 1;
 
 try {
     $pdo = new PDO(
@@ -74,10 +77,28 @@ try {
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+    mdashEnsureFavoritesTable($pdo);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_favorite') {
+        $uploadId = (int)($_POST['id'] ?? 0);
+        if ($uploadId > 0) {
+            mdashToggleFavorite($pdo, (int)$user['id'], 'data', $uploadId);
+            header('Location: database_list.php' . ($favoritesOnly ? '?favorites=1' : ''));
+            exit;
+        }
+    }
+
     $stmt = $pdo->prepare(
-        'SELECT u.*, usr.username AS owner_username FROM uploads u LEFT JOIN users usr ON usr.id = u.id_owner WHERE (u.id_owner = ? OR u.is_public = 1) ORDER BY u.id DESC'
+        'SELECT u.*, usr.username AS owner_username,
+                CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite
+         FROM uploads u
+         LEFT JOIN users usr ON usr.id = u.id_owner
+         LEFT JOIN user_favorites f ON f.favorite_type = "data" AND f.favorite_id = u.id AND f.id_owner = ?
+         WHERE (u.id_owner = ? OR u.is_public = 1)
+           AND (? = 0 OR f.favorite_id IS NOT NULL)
+         ORDER BY u.id DESC'
     );
-    $stmt->execute([(int)$user['id']]);
+    $stmt->execute([(int)$user['id'], (int)$user['id'], $favoritesOnly ? 1 : 0]);
     $uploads = $stmt->fetchAll();
 } catch (PDOException $e) {
     $error = $e->getMessage();
@@ -126,7 +147,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <h1>Data source list</h1>
                 <div class="meta">Browse your files and public files shared by other users.</div>
             </div>
-            <a href="main.php">Back to home</a>
+            <div class="inline-actions">
+                <?php if ($favoritesOnly): ?>
+                    <a href="database_list.php">All data sources</a>
+                <?php else: ?>
+                    <a href="database_list.php?favorites=1">Only favorites</a>
+                <?php endif; ?>
+                <a href="main.php">Back to home</a>
+            </div>
         </div>
 
         <?php if ($message): ?>
@@ -142,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <table>
                     <thead>
                         <tr>
+                            <th>Fav</th>
                             <th>ID</th>
                             <th>File</th>
                             <th>Owner</th>
@@ -155,6 +184,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <tbody>
                         <?php foreach ($uploads as $row): ?>
                             <tr>
+                                <td>
+                                    <form method="post">
+                                        <input type="hidden" name="action" value="toggle_favorite">
+                                        <input type="hidden" name="id" value="<?php echo h($row['id']); ?>">
+                                        <button type="submit" class="favorite-btn<?php echo (int)($row['is_favorite'] ?? 0) === 1 ? ' is-active' : ''; ?>" title="Toggle favorite" aria-label="Toggle favorite"><?php echo (int)($row['is_favorite'] ?? 0) === 1 ? '&#9733;' : '&#9734;'; ?></button>
+                                    </form>
+                                </td>
                                 <td><?php echo h($row['id']); ?></td>
                                 <td>
                                     <?php echo h($row['filename']); ?>

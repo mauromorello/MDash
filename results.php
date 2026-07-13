@@ -165,6 +165,7 @@ $results = [];
 $error = '';
 $message = '';
 $showHidden = isset($_GET['show_hidden']) && (int)$_GET['show_hidden'] === 1;
+$favoritesOnly = isset($_GET['favorites']) && (int)$_GET['favorites'] === 1;
 $requestedAction = (string)($_POST['action'] ?? $_GET['action'] ?? '');
 $expectsJson = ($requestedAction === 'clone_result' && ($_POST['ajax'] ?? '') === '1');
 
@@ -181,6 +182,7 @@ try {
 
     mdashEnsureResultsAiColumns($pdo);
     mdashEnsureAiDbTable($pdo);
+    mdashEnsureFavoritesTable($pdo);
 
     $getAction = (string)($_GET['action'] ?? '');
     if (in_array($getAction, ['open_result', 'download_result'], true)) {
@@ -242,7 +244,7 @@ try {
         $action = (string)($_POST['action'] ?? '');
         $resultId = (int)($_POST['result_id'] ?? 0);
 
-        if ($resultId > 0 && in_array($action, ['set_hidden', 'set_public', 'delete_result', 'save_thumbnail', 'clone_result'], true)) {
+        if ($resultId > 0 && in_array($action, ['set_hidden', 'set_public', 'delete_result', 'save_thumbnail', 'clone_result', 'toggle_favorite'], true)) {
             $ownerStmt = $pdo->prepare('SELECT id, id_owner, path FROM results WHERE id = ? LIMIT 1');
             $ownerStmt->execute([$resultId]);
             $ownerRow = $ownerStmt->fetch();
@@ -251,13 +253,30 @@ try {
                 throw new RuntimeException('Result not found.');
             }
 
-            $isOwner = (int)$ownerRow['id_owner'] === (int)$user['id'];
-            $isClone = $action === 'clone_result';
-            if (!$isOwner && !$isClone) {
-                throw new RuntimeException('You can only modify your own dashboards.');
-            }
+            if ($action === 'toggle_favorite') {
+                $visibilityStmt = $pdo->prepare('SELECT id_owner, is_public, is_hidden FROM results WHERE id = ? LIMIT 1');
+                $visibilityStmt->execute([$resultId]);
+                $visibilityRow = $visibilityStmt->fetch();
+                if (!$visibilityRow) {
+                    throw new RuntimeException('Result not found.');
+                }
 
-            if ($isClone) {
+                $canFavorite = (int)$visibilityRow['id_owner'] === (int)$user['id']
+                    || ((int)$visibilityRow['is_public'] === 1 && (int)$visibilityRow['is_hidden'] === 0);
+                if (!$canFavorite) {
+                    throw new RuntimeException('Not authorized to favorite this dashboard.');
+                }
+
+                mdashToggleFavorite($pdo, (int)$user['id'], 'result', $resultId);
+                $message = 'Favorite updated.';
+            } else {
+                $isOwner = (int)$ownerRow['id_owner'] === (int)$user['id'];
+                $isClone = $action === 'clone_result';
+                if (!$isOwner && !$isClone) {
+                    throw new RuntimeException('You can only modify your own dashboards.');
+                }
+
+                if ($isClone) {
                 $visibilityStmt = $pdo->prepare('SELECT id, id_owner, is_public, is_hidden, path, thumbnail_path, id_template, id_ai_db, ai_title, ai_provider, ai_model, final_prompt, `HTML`, tags FROM results WHERE id = ? LIMIT 1');
                 $visibilityStmt->execute([$resultId]);
                 $sourceRow = $visibilityStmt->fetch();
@@ -342,50 +361,51 @@ try {
                 }
 
                 $message = 'Dashboard cloned successfully.';
-            }
-
-            if ($action === 'set_hidden') {
-                $hiddenValue = (int)($_POST['hidden_value'] ?? 0) === 1 ? 1 : 0;
-                $updateStmt = $pdo->prepare('UPDATE results SET is_hidden = ? WHERE id = ? AND id_owner = ?');
-                $updateStmt->execute([$hiddenValue, $resultId, (int)$user['id']]);
-                $message = $hiddenValue === 1 ? 'Dashboard hidden successfully.' : 'Dashboard revealed successfully.';
-            }
-
-            if ($action === 'set_public') {
-                $publicValue = (int)($_POST['public_value'] ?? 0) === 1 ? 1 : 0;
-                $updateStmt = $pdo->prepare('UPDATE results SET is_public = ? WHERE id = ? AND id_owner = ?');
-                $updateStmt->execute([$publicValue, $resultId, (int)$user['id']]);
-                $message = $publicValue === 1 ? 'Dashboard is now public.' : 'Dashboard is now private.';
-            }
-
-            if ($action === 'delete_result') {
-                $deleteStmt = $pdo->prepare('DELETE FROM results WHERE id = ? AND id_owner = ?');
-                $deleteStmt->execute([$resultId, (int)$user['id']]);
-
-                $resultFolder = __DIR__ . DIRECTORY_SEPARATOR . 'results' . DIRECTORY_SEPARATOR . $resultId;
-                removeDirectoryRecursive($resultFolder);
-                $message = 'Dashboard deleted permanently.';
-            }
-
-            if ($action === 'save_thumbnail') {
-                $thumbnailData = (string)($_POST['thumbnail_data'] ?? '');
-                if ($thumbnailData === '') {
-                    throw new RuntimeException('No screenshot data provided.');
                 }
 
-                $parsed = parseDataUrlImage($thumbnailData);
-                $resultFolder = __DIR__ . DIRECTORY_SEPARATOR . 'results' . DIRECTORY_SEPARATOR . $resultId;
-                if (!is_dir($resultFolder) && !mkdir($resultFolder, 0777, true) && !is_dir($resultFolder)) {
-                    throw new RuntimeException('Unable to create result folder for thumbnail.');
+                if ($action === 'set_hidden') {
+                    $hiddenValue = (int)($_POST['hidden_value'] ?? 0) === 1 ? 1 : 0;
+                    $updateStmt = $pdo->prepare('UPDATE results SET is_hidden = ? WHERE id = ? AND id_owner = ?');
+                    $updateStmt->execute([$hiddenValue, $resultId, (int)$user['id']]);
+                    $message = $hiddenValue === 1 ? 'Dashboard hidden successfully.' : 'Dashboard revealed successfully.';
                 }
 
-                $relativeThumbPath = 'results/' . $resultId . '/thumbnail.' . $parsed['extension'];
-                $diskThumbPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativeThumbPath);
-                file_put_contents($diskThumbPath, $parsed['binary']);
+                if ($action === 'set_public') {
+                    $publicValue = (int)($_POST['public_value'] ?? 0) === 1 ? 1 : 0;
+                    $updateStmt = $pdo->prepare('UPDATE results SET is_public = ? WHERE id = ? AND id_owner = ?');
+                    $updateStmt->execute([$publicValue, $resultId, (int)$user['id']]);
+                    $message = $publicValue === 1 ? 'Dashboard is now public.' : 'Dashboard is now private.';
+                }
 
-                $thumbStmt = $pdo->prepare('UPDATE results SET thumbnail_path = ? WHERE id = ? AND id_owner = ?');
-                $thumbStmt->execute([$relativeThumbPath, $resultId, (int)$user['id']]);
-                $message = 'Screenshot thumbnail saved successfully.';
+                if ($action === 'delete_result') {
+                    $deleteStmt = $pdo->prepare('DELETE FROM results WHERE id = ? AND id_owner = ?');
+                    $deleteStmt->execute([$resultId, (int)$user['id']]);
+
+                    $resultFolder = __DIR__ . DIRECTORY_SEPARATOR . 'results' . DIRECTORY_SEPARATOR . $resultId;
+                    removeDirectoryRecursive($resultFolder);
+                    $message = 'Dashboard deleted permanently.';
+                }
+
+                if ($action === 'save_thumbnail') {
+                    $thumbnailData = (string)($_POST['thumbnail_data'] ?? '');
+                    if ($thumbnailData === '') {
+                        throw new RuntimeException('No screenshot data provided.');
+                    }
+
+                    $parsed = parseDataUrlImage($thumbnailData);
+                    $resultFolder = __DIR__ . DIRECTORY_SEPARATOR . 'results' . DIRECTORY_SEPARATOR . $resultId;
+                    if (!is_dir($resultFolder) && !mkdir($resultFolder, 0777, true) && !is_dir($resultFolder)) {
+                        throw new RuntimeException('Unable to create result folder for thumbnail.');
+                    }
+
+                    $relativeThumbPath = 'results/' . $resultId . '/thumbnail.' . $parsed['extension'];
+                    $diskThumbPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativeThumbPath);
+                    file_put_contents($diskThumbPath, $parsed['binary']);
+
+                    $thumbStmt = $pdo->prepare('UPDATE results SET thumbnail_path = ? WHERE id = ? AND id_owner = ?');
+                    $thumbStmt->execute([$relativeThumbPath, $resultId, (int)$user['id']]);
+                    $message = 'Screenshot thumbnail saved successfully.';
+                }
             }
 
         }
@@ -397,14 +417,21 @@ try {
 
     $stmt = $pdo->prepare(
            'SELECT r.*, t.title AS template_title, u.username AS owner_username, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model
+                                , CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite
          FROM results r
          LEFT JOIN templates t ON t.id = r.id_template
          LEFT JOIN users u ON u.id = r.id_owner
             LEFT JOIN ai_db a ON a.id = r.id_ai_db
+                 LEFT JOIN user_favorites f ON f.favorite_type = "result" AND f.favorite_id = r.id AND f.id_owner = :favorite_owner
          WHERE ' . $visibilityWhere . '
+                     AND (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
          ORDER BY r.id DESC'
     );
-    $stmt->execute(['user_id' => (int)$user['id']]);
+        $stmt->execute([
+                'user_id' => (int)$user['id'],
+                'favorite_owner' => (int)$user['id'],
+                'favorites_only' => $favoritesOnly ? 1 : 0,
+        ]);
     $results = $stmt->fetchAll();
 } catch (Throwable $e) {
     if ($expectsJson) {
@@ -432,11 +459,18 @@ try {
             <div class="meta">
                 Hidden dashboards are excluded by default.
             </div>
-            <?php if ($showHidden): ?>
-                <a href="results.php" class="btn-secondary">Hide hidden dashboards</a>
-            <?php else: ?>
-                <a href="results.php?show_hidden=1" class="btn-secondary">Reveal hidden dashboards</a>
-            <?php endif; ?>
+            <div class="inline-actions">
+                <?php if ($favoritesOnly): ?>
+                    <a href="results.php<?php echo $showHidden ? '?show_hidden=1' : ''; ?>" class="btn-secondary">All dashboards</a>
+                <?php else: ?>
+                    <a href="results.php?favorites=1<?php echo $showHidden ? '&show_hidden=1' : ''; ?>" class="btn-secondary">Only favorites</a>
+                <?php endif; ?>
+                <?php if ($showHidden): ?>
+                    <a href="results.php<?php echo $favoritesOnly ? '?favorites=1' : ''; ?>" class="btn-secondary">Hide hidden dashboards</a>
+                <?php else: ?>
+                    <a href="results.php?show_hidden=1<?php echo $favoritesOnly ? '&favorites=1' : ''; ?>" class="btn-secondary">Reveal hidden dashboards</a>
+                <?php endif; ?>
+            </div>
         </div>
 
         <?php if ($message): ?>
@@ -487,6 +521,12 @@ try {
                                 <td><?php echo h($ownerLabel); ?></td>
                                 <td>
                                     <div class="result-actions">
+                                        <form method="post">
+                                            <input type="hidden" name="action" value="toggle_favorite">
+                                            <input type="hidden" name="result_id" value="<?php echo h($result['id']); ?>">
+                                            <button type="submit" class="favorite-btn<?php echo (int)($result['is_favorite'] ?? 0) === 1 ? ' is-active' : ''; ?>" title="Toggle favorite" aria-label="Toggle favorite"><?php echo (int)($result['is_favorite'] ?? 0) === 1 ? '&#9733;' : '&#9734;'; ?></button>
+                                        </form>
+
                                         <a class="btn-ghost icon-btn" href="results.php?action=open_result&amp;result_id=<?php echo h((int)$result['id']); ?>" target="_blank" rel="noopener" title="Open dashboard" aria-label="Open dashboard">&#128279;</a>
                                         <a class="btn-ghost icon-btn" href="results.php?action=download_result&amp;result_id=<?php echo h((int)$result['id']); ?>" title="Download dashboard" aria-label="Download dashboard">&#11015;&#65039;</a>
 

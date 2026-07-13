@@ -98,6 +98,13 @@ $dbUser = getenv('DB_USER') ?: 'root';
 $dbPass = getenv('DB_PASS') ?: 'zxca$dqwe123';
 
 $readyDashboards = [];
+$favoriteCounts = [
+    'template' => 0,
+    'makeup' => 0,
+    'data' => 0,
+    'dashboard' => 0,
+    'result' => 0,
+];
 
 try {
     $pdo = new PDO(
@@ -111,6 +118,21 @@ try {
     );
 
         mdashEnsureResultsAiColumns($pdo);
+        mdashEnsureFavoritesTable($pdo);
+
+        $favStmt = $pdo->prepare(
+            'SELECT favorite_type, COUNT(*) AS total
+             FROM user_favorites
+             WHERE id_owner = ?
+             GROUP BY favorite_type'
+        );
+        $favStmt->execute([(int)$user['id']]);
+        foreach ($favStmt->fetchAll() as $favRow) {
+            $favoriteType = mdashNormalizeFavoriteType((string)($favRow['favorite_type'] ?? ''));
+            if ($favoriteType !== null) {
+                $favoriteCounts[$favoriteType] = (int)($favRow['total'] ?? 0);
+            }
+        }
 
                 $stmt = $pdo->prepare(
                                         'SELECT r.id, r.id_owner, r.is_public, r.is_hidden, r.path, r.thumbnail_path, r.final_prompt, r.ai_title, r.ai_provider, r.ai_model, r.tags, r.n_views, r.n_download, r.n_clone, u.username AS owner_username
@@ -206,6 +228,25 @@ try {
 
             <div class="main-sections-grid">
                 <div class="main-section-card">
+                    <h2>I miei preferiti</h2>
+                    <div class="main-action-item">
+                        <a href="templates.php?favorites=1" class="btn btn-secondary">Template <span class="main-fav-count"><?php echo h($favoriteCounts['template']); ?></span></a>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="makeup.php?favorites=1" class="btn btn-secondary">Markup <span class="main-fav-count"><?php echo h($favoriteCounts['makeup']); ?></span></a>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="database_list.php?favorites=1" class="btn btn-secondary">Data <span class="main-fav-count"><?php echo h($favoriteCounts['data']); ?></span></a>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="dashboards.php?favorites=1" class="btn btn-secondary">Dashboard <span class="main-fav-count"><?php echo h($favoriteCounts['dashboard']); ?></span></a>
+                    </div>
+                    <div class="main-action-item">
+                        <a href="results.php?favorites=1" class="btn btn-secondary">Results <span class="main-fav-count"><?php echo h($favoriteCounts['result']); ?></span></a>
+                    </div>
+                </div>
+
+                <div class="main-section-card is-muted-config">
                     <h2>Config</h2>
                     <div class="main-action-item">
                         <a href="ai_db.php" class="btn btn-secondary">AI</a>

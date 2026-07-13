@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once __DIR__ . '/ai_shared.php';
 
 header('Content-Type: application/json');
 
@@ -88,6 +89,67 @@ function ensureTemplatesTable(PDO $pdo): void {
             $pdo->exec("ALTER TABLE templates ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0");
         }
     }
+}
+
+function canFavoriteEntity(PDO $pdo, int $userId, string $favoriteType, int $favoriteId): bool {
+    if ($userId <= 0 || $favoriteId <= 0) {
+        return false;
+    }
+
+    $type = mdashNormalizeFavoriteType($favoriteType);
+    if ($type === null) {
+        return false;
+    }
+
+    switch ($type) {
+        case 'template':
+            ensureTemplatesTable($pdo);
+            $stmt = $pdo->prepare(
+                'SELECT 1 FROM templates
+                 WHERE id = ? AND (id_owner = ? OR (is_public = 1 AND is_hidden = 0))
+                 LIMIT 1'
+            );
+            $stmt->execute([$favoriteId, $userId]);
+            return (bool)$stmt->fetchColumn();
+
+        case 'makeup':
+            $stmt = $pdo->prepare(
+                'SELECT 1 FROM makeup
+                 WHERE id_makeup = ? AND (id_owner = ? OR (is_private = 0 AND is_hidden = 0))
+                 LIMIT 1'
+            );
+            $stmt->execute([$favoriteId, $userId]);
+            return (bool)$stmt->fetchColumn();
+
+        case 'data':
+            $stmt = $pdo->prepare(
+                'SELECT 1 FROM uploads
+                 WHERE id = ? AND (id_owner = ? OR is_public = 1)
+                 LIMIT 1'
+            );
+            $stmt->execute([$favoriteId, $userId]);
+            return (bool)$stmt->fetchColumn();
+
+        case 'dashboard':
+            $stmt = $pdo->prepare(
+                'SELECT 1 FROM dashboards
+                 WHERE id = ?
+                 LIMIT 1'
+            );
+            $stmt->execute([$favoriteId]);
+            return (bool)$stmt->fetchColumn();
+
+        case 'result':
+            $stmt = $pdo->prepare(
+                'SELECT 1 FROM results
+                 WHERE id = ? AND ((id_owner = ? AND is_hidden = 0) OR (is_public = 1 AND is_hidden = 0))
+                 LIMIT 1'
+            );
+            $stmt->execute([$favoriteId, $userId]);
+            return (bool)$stmt->fetchColumn();
+    }
+
+    return false;
 }
 
 try {
@@ -183,19 +245,62 @@ if ($action === 'list_tables') {
 if ($action === 'list_templates') {
     try {
         ensureTemplatesTable($pdo);
+        mdashEnsureFavoritesTable($pdo);
+        $favoritesOnly = (int)($_POST['favorites_only'] ?? $_GET['favorites_only'] ?? 0) === 1 ? 1 : 0;
         $stmt = $pdo->prepare(
             'SELECT t.id, t.title, t.prompt, t.`date`, t.id_owner, t.is_hidden, t.is_public, u.username AS owner_username,
-                    CASE WHEN t.id_owner = ? THEN 1 ELSE 0 END AS is_owner
+                    CASE WHEN t.id_owner = :user_owner THEN 1 ELSE 0 END AS is_owner,
+                    CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite
              FROM templates t
              LEFT JOIN users u ON u.id = t.id_owner
-             WHERE t.id_owner = ? OR (t.is_public = 1 AND t.is_hidden = 0)
+             LEFT JOIN user_favorites f ON f.favorite_type = "template" AND f.favorite_id = t.id AND f.id_owner = :favorite_owner
+             WHERE (t.id_owner = :user_scope OR (t.is_public = 1 AND t.is_hidden = 0))
+               AND (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
              ORDER BY t.id DESC'
         );
-        $stmt->execute([(int)$user['id'], (int)$user['id']]);
+        $stmt->execute([
+            'user_owner' => (int)$user['id'],
+            'favorite_owner' => (int)$user['id'],
+            'user_scope' => (int)$user['id'],
+            'favorites_only' => $favoritesOnly,
+        ]);
         $rows = $stmt->fetchAll();
         respond(true, 'Template trovati.', ['templates' => $rows]);
     } catch (Exception $e) {
         respond(false, 'Errore lettura template: ' . $e->getMessage());
+    }
+}
+
+if ($action === 'toggle_favorite') {
+    $favoriteType = (string)($_POST['favorite_type'] ?? '');
+    $favoriteId = (int)($_POST['favorite_id'] ?? 0);
+    $forcedState = $_POST['is_favorite'] ?? null;
+
+    if ($favoriteId <= 0) {
+        respond(false, 'ID preferito non valido.');
+    }
+
+    $normalizedType = mdashNormalizeFavoriteType($favoriteType);
+    if ($normalizedType === null) {
+        respond(false, 'Tipo preferito non supportato.');
+    }
+
+    try {
+        mdashEnsureFavoritesTable($pdo);
+        if (!canFavoriteEntity($pdo, (int)$user['id'], $normalizedType, $favoriteId)) {
+            respond(false, 'Elemento non disponibile per questo utente.');
+        }
+
+        if ($forcedState === null || $forcedState === '') {
+            $isFavorite = mdashToggleFavorite($pdo, (int)$user['id'], $normalizedType, $favoriteId);
+        } else {
+            $targetState = (int)$forcedState === 1;
+            $isFavorite = mdashSetFavorite($pdo, (int)$user['id'], $normalizedType, $favoriteId, $targetState);
+        }
+
+        respond(true, 'Preferito aggiornato.', ['is_favorite' => $isFavorite ? 1 : 0]);
+    } catch (Exception $e) {
+        respond(false, 'Errore aggiornamento preferito: ' . $e->getMessage());
     }
 }
 

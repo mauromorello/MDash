@@ -50,6 +50,7 @@ $pdo = null;
 $dashboards = [];
 $error = '';
 $message = '';
+$favoritesOnly = isset($_GET['favorites']) && (int)$_GET['favorites'] === 1;
 
 try {
     $pdo = new PDO(
@@ -65,8 +66,22 @@ try {
     mdashEnsureDashboardAiColumn($pdo);
     mdashEnsureAiDbTable($pdo);
     mdashEnsureDashboardDatasourceMapTable($pdo);
+    mdashEnsureFavoritesTable($pdo);
 } catch (PDOException $e) {
     $error = $e->getMessage();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_favorite' && $pdo) {
+    $dashboardId = (int)($_POST['id'] ?? 0);
+    if ($dashboardId > 0) {
+        try {
+            mdashToggleFavorite($pdo, (int)$user['id'], 'dashboard', $dashboardId);
+            header('Location: dashboards.php' . ($favoritesOnly ? '?favorites=1' : ''));
+            exit;
+        } catch (Throwable $e) {
+            $error = 'Error while updating favorite: ' . $e->getMessage();
+        }
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_dashboard' && $pdo) {
@@ -86,8 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
 if ($pdo) {
     try {
-        $stmt = $pdo->query(
+        $stmt = $pdo->prepare(
             'SELECT d.*, u.filename AS datasource_filename, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model,
+                    CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite,
                     (
                         SELECT GROUP_CONCAT(CONCAT("#", ud.id, " - ", ud.filename) ORDER BY dd.sort_order SEPARATOR "\n")
                         FROM dashboard_datasources dd
@@ -97,8 +113,14 @@ if ($pdo) {
              FROM dashboards d
              LEFT JOIN uploads u ON u.id = d.id_datasource
              LEFT JOIN ai_db a ON a.id = d.id_ai_db
+             LEFT JOIN user_favorites f ON f.favorite_type = "dashboard" AND f.favorite_id = d.id AND f.id_owner = :favorite_owner
+             WHERE (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
              ORDER BY d.id DESC'
         );
+        $stmt->execute([
+            'favorite_owner' => (int)$user['id'],
+            'favorites_only' => $favoritesOnly ? 1 : 0,
+        ]);
         $dashboards = $stmt->fetchAll();
     } catch (PDOException $e) {
         $error = 'Error while loading dashboards: ' . $e->getMessage();
@@ -124,6 +146,11 @@ if (!empty($_GET['created'])) {
                 <div class="meta">Manage created dashboards, inspect prompts, and edit details.</div>
             </div>
             <div class="inline-actions">
+                <?php if ($favoritesOnly): ?>
+                    <a href="dashboards.php">All dashboards</a>
+                <?php else: ?>
+                    <a href="dashboards.php?favorites=1">Only favorites</a>
+                <?php endif; ?>
                 <a href="dashboard_builder.php">New dashboard</a>
                 <a href="ai_db.php">AI profiles</a>
                 <a href="makeup.php">Makeup library</a>
@@ -147,6 +174,7 @@ if (!empty($_GET['created'])) {
                 <table>
                     <thead>
                         <tr>
+                            <th>Fav</th>
                             <th>ID</th>
                             <th>Title</th>
                             <th>Created At</th>
@@ -159,6 +187,13 @@ if (!empty($_GET['created'])) {
                     <tbody>
                         <?php foreach ($dashboards as $dashboard): ?>
                             <tr>
+                                <td>
+                                    <form method="post">
+                                        <input type="hidden" name="action" value="toggle_favorite">
+                                        <input type="hidden" name="id" value="<?php echo h($dashboard['id']); ?>">
+                                        <button type="submit" class="favorite-btn<?php echo (int)($dashboard['is_favorite'] ?? 0) === 1 ? ' is-active' : ''; ?>" title="Toggle favorite" aria-label="Toggle favorite"><?php echo (int)($dashboard['is_favorite'] ?? 0) === 1 ? '&#9733;' : '&#9734;'; ?></button>
+                                    </form>
+                                </td>
                                 <td><?php echo h($dashboard['id']); ?></td>
                                 <td><?php echo h($dashboard['title']); ?></td>
                                 <td><?php echo h($dashboard['date_creation']); ?></td>
@@ -189,7 +224,7 @@ if (!empty($_GET['created'])) {
                                 </td>
                             </tr>
                             <tr id="preview-<?php echo h($dashboard['id']); ?>" class="preview-row">
-                                <td colspan="7">
+                                <td colspan="8">
                                     <div class="preview-panel">
                                         <h3>Data filter prompt</h3>
                                         <p><?php echo h($dashboard['data_filter_prompt']); ?></p>

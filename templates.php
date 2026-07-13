@@ -40,6 +40,8 @@ if (!$user) {
     header('Location: index.php');
     exit;
 }
+
+$favoritesOnly = isset($_GET['favorites']) && (int)$_GET['favorites'] === 1;
 ?>
 <?php $pageTitle = 'Templates'; include __DIR__ . '/header.php'; ?>
 <body>
@@ -51,7 +53,14 @@ if (!$user) {
                 <h1>Templates</h1>
                 <div class="meta"><span class="pill">My templates</span> Create, edit, and remove prompt templates for the dashboard builder.</div>
             </div>
-            <a href="dashboard_builder.php">Go to dashboard builder</a>
+            <div class="inline-actions">
+                <?php if ($favoritesOnly): ?>
+                    <a href="templates.php">All templates</a>
+                <?php else: ?>
+                    <a href="templates.php?favorites=1">Only favorites</a>
+                <?php endif; ?>
+                <a href="dashboard_builder.php">Go to dashboard builder</a>
+            </div>
         </div>
 
         <div id="messageBox" class="message hidden"></div>
@@ -93,6 +102,7 @@ if (!$user) {
                 <table>
                     <thead>
                         <tr>
+                            <th>Fav</th>
                             <th>ID</th>
                             <th>Title</th>
                             <th>Prompt</th>
@@ -103,7 +113,7 @@ if (!$user) {
                         </tr>
                     </thead>
                     <tbody id="templatesRows">
-                        <tr><td colspan="7" class="empty">Loading templates...</td></tr>
+                        <tr><td colspan="8" class="empty">Loading templates...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -132,7 +142,7 @@ if (!$user) {
         function renderRows(rows) {
             const body = document.getElementById('templatesRows');
             if (!rows || rows.length === 0) {
-                body.innerHTML = '<tr><td colspan="7" class="empty">No templates available.</td></tr>';
+                body.innerHTML = '<tr><td colspan="8" class="empty">No templates available.</td></tr>';
                 return;
             }
 
@@ -143,6 +153,7 @@ if (!$user) {
                 const isOwner = Number(row.is_owner || 0) === 1;
                 const isPublic = Number(row.is_public || 0) === 1;
                 const isHidden = Number(row.is_hidden || 0) === 1;
+                const isFavorite = Number(row.is_favorite || 0) === 1;
                 const creator = row.owner_username || ('User #' + String(row.id_owner || ''));
 
                 let statusText = isPublic ? 'Public' : 'Private';
@@ -157,7 +168,10 @@ if (!$user) {
                       '</div>'
                     : '<span class="meta">Read only</span>';
 
+                const favoriteHtml = '<button type="button" class="favorite-btn template-favorite-toggle' + (isFavorite ? ' is-active' : '') + '" data-id="' + String(row.id || '') + '" title="Toggle favorite" aria-label="Toggle favorite">' + (isFavorite ? '&#9733;' : '&#9734;') + '</button>';
+
                 tr.innerHTML = '' +
+                    '<td>' + favoriteHtml + '</td>' +
                     '<td>' + String(row.id || '') + '</td>' +
                     '<td>' + String(row.title || '') + '</td>' +
                     '<td><div class="prompt-preview">' + String(promptPreview || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></td>' +
@@ -190,10 +204,29 @@ if (!$user) {
                     });
                 });
             });
+
+            document.querySelectorAll('.template-favorite-toggle').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const id = btn.getAttribute('data-id');
+                    if (!id) {
+                        return;
+                    }
+
+                    api('toggle_favorite', { favorite_type: 'template', favorite_id: id }).then(function (res) {
+                        if (!res.success) {
+                            showMessage(res.message || 'Favorite update error.', true);
+                            return;
+                        }
+                        loadTemplates();
+                    }).catch(function () {
+                        showMessage('Network error while updating favorite.', true);
+                    });
+                });
+            });
         }
 
         function loadTemplates() {
-            api('list_templates', {}).then(function (res) {
+            api('list_templates', { favorites_only: <?php echo $favoritesOnly ? '1' : '0'; ?> }).then(function (res) {
                 if (!res.success) {
                     showMessage(res.message || 'Template loading error.', true);
                     renderRows([]);

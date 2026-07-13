@@ -257,3 +257,131 @@ function mdashProviderLabel(string $provider): string {
 
     return $providers[$key] ?? $provider;
 }
+
+function mdashFavoriteEntityTypes(): array {
+    return [
+        'template' => ['table' => 'templates', 'id_column' => 'id'],
+        'makeup' => ['table' => 'makeup', 'id_column' => 'id_makeup'],
+        'data' => ['table' => 'uploads', 'id_column' => 'id'],
+        'dashboard' => ['table' => 'dashboards', 'id_column' => 'id'],
+        'result' => ['table' => 'results', 'id_column' => 'id'],
+    ];
+}
+
+function mdashNormalizeFavoriteType(string $favoriteType): ?string {
+    $normalized = strtolower(trim($favoriteType));
+    if ($normalized === 'markup') {
+        $normalized = 'makeup';
+    }
+    if ($normalized === 'datasource' || $normalized === 'upload') {
+        $normalized = 'data';
+    }
+    if ($normalized === 'results') {
+        $normalized = 'result';
+    }
+    if ($normalized === 'templates') {
+        $normalized = 'template';
+    }
+    if ($normalized === 'dashboards') {
+        $normalized = 'dashboard';
+    }
+
+    $supported = mdashFavoriteEntityTypes();
+    return isset($supported[$normalized]) ? $normalized : null;
+}
+
+function mdashEnsureFavoritesTable(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS user_favorites (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            id_owner INT NOT NULL,
+            favorite_type VARCHAR(32) NOT NULL,
+            favorite_id INT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_user_favorite (id_owner, favorite_type, favorite_id),
+            INDEX idx_user_favorite_owner (id_owner),
+            INDEX idx_user_favorite_type_id (favorite_type, favorite_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
+function mdashSetFavorite(PDO $pdo, int $userId, string $favoriteType, int $favoriteId, bool $isFavorite): bool {
+    mdashEnsureFavoritesTable($pdo);
+
+    $normalizedType = mdashNormalizeFavoriteType($favoriteType);
+    if ($normalizedType === null || $userId <= 0 || $favoriteId <= 0) {
+        return false;
+    }
+
+    if ($isFavorite) {
+        $stmt = $pdo->prepare(
+            'INSERT INTO user_favorites (id_owner, favorite_type, favorite_id, created_at)
+             VALUES (?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE created_at = VALUES(created_at)'
+        );
+        $stmt->execute([$userId, $normalizedType, $favoriteId]);
+        return true;
+    }
+
+    $stmt = $pdo->prepare(
+        'DELETE FROM user_favorites
+         WHERE id_owner = ? AND favorite_type = ? AND favorite_id = ?'
+    );
+    $stmt->execute([$userId, $normalizedType, $favoriteId]);
+    return false;
+}
+
+function mdashToggleFavorite(PDO $pdo, int $userId, string $favoriteType, int $favoriteId): bool {
+    mdashEnsureFavoritesTable($pdo);
+
+    $normalizedType = mdashNormalizeFavoriteType($favoriteType);
+    if ($normalizedType === null || $userId <= 0 || $favoriteId <= 0) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM user_favorites
+         WHERE id_owner = ? AND favorite_type = ? AND favorite_id = ?
+         LIMIT 1'
+    );
+    $stmt->execute([$userId, $normalizedType, $favoriteId]);
+    $exists = (bool)$stmt->fetchColumn();
+
+    return mdashSetFavorite($pdo, $userId, $normalizedType, $favoriteId, !$exists);
+}
+
+function mdashFetchFavoriteMap(PDO $pdo, int $userId, string $favoriteType, array $entityIds): array {
+    mdashEnsureFavoritesTable($pdo);
+
+    $normalizedType = mdashNormalizeFavoriteType($favoriteType);
+    if ($normalizedType === null || $userId <= 0 || empty($entityIds)) {
+        return [];
+    }
+
+    $cleanIds = [];
+    foreach ($entityIds as $rawId) {
+        $id = (int)$rawId;
+        if ($id > 0) {
+            $cleanIds[] = $id;
+        }
+    }
+    $cleanIds = array_values(array_unique($cleanIds));
+    if (empty($cleanIds)) {
+        return [];
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($cleanIds), '?'));
+    $stmt = $pdo->prepare(
+        'SELECT favorite_id
+         FROM user_favorites
+         WHERE id_owner = ? AND favorite_type = ? AND favorite_id IN (' . $placeholders . ')'
+    );
+    $stmt->execute(array_merge([$userId, $normalizedType], $cleanIds));
+
+    $map = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $map[(int)($row['favorite_id'] ?? 0)] = true;
+    }
+
+    return $map;
+}
