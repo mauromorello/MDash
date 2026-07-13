@@ -65,7 +65,7 @@ if ($topbarIsAdmin) {
             <img src="assets/logo.png" alt="MDash logo" class="topbar-logo-image">
         </a>
         <div class="info">
-            <span>User: <?php echo $topbarUsername; ?></span>
+            <span>User: <b><?php echo $topbarUsername; ?></b></span>
             <span class="topbar-role-icons" aria-label="User permissions">
                 <?php if ($topbarIsAdmin): ?>
                     <span class="topbar-role-icon" title="Admin" aria-label="Admin">&#128737;</span>
