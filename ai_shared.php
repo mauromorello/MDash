@@ -108,6 +108,30 @@ function mdashEnsureDashboardAiColumn(PDO $pdo): void {
     if (!$hiddenColumn) {
         $pdo->exec("ALTER TABLE dashboards ADD COLUMN is_hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER is_public");
     }
+
+    $uploadsTableExists = (bool)$pdo->query("SHOW TABLES LIKE 'uploads'")->fetchColumn();
+    if ($uploadsTableExists) {
+        mdashEnsureDashboardDatasourceMapTable($pdo);
+
+        $pdo->exec(
+            "UPDATE dashboards d
+             INNER JOIN (
+                 SELECT dd.id_dashboard, MIN(dd.id_datasource) AS first_datasource_id
+                 FROM dashboard_datasources dd
+                 GROUP BY dd.id_dashboard
+             ) map ON map.id_dashboard = d.id
+             INNER JOIN uploads u ON u.id = map.first_datasource_id
+             SET d.id_owner = u.id_owner
+             WHERE d.id_owner = 0"
+        );
+
+        $pdo->exec(
+            "UPDATE dashboards d
+             INNER JOIN uploads u ON u.id = d.id_datasource
+             SET d.id_owner = u.id_owner
+             WHERE d.id_owner = 0 AND d.id_datasource IS NOT NULL"
+        );
+    }
 }
 
 function mdashEnsureDashboardDatasourceMapTable(PDO $pdo): void {

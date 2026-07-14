@@ -122,6 +122,7 @@ if ($pdo) {
 
         $stmt = $pdo->prepare(
             'SELECT d.*, u.filename AS datasource_filename, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model,
+                    t.title AS template_title, m.name AS makeup_name,
                     CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite,
                     (
                         SELECT GROUP_CONCAT(CONCAT("#", ud.id, " - ", ud.filename) ORDER BY dd.sort_order SEPARATOR "\n")
@@ -132,6 +133,8 @@ if ($pdo) {
              FROM dashboards d
              LEFT JOIN uploads u ON u.id = d.id_datasource
              LEFT JOIN ai_db a ON a.id = d.id_ai_db
+             LEFT JOIN templates t ON t.id = d.id_template
+             LEFT JOIN makeup m ON m.id_makeup = d.id_makeup
              LEFT JOIN user_favorites f ON f.favorite_type = "dashboard" AND f.favorite_id = d.id AND f.id_owner = :favorite_owner
                          WHERE ' . $visibilityCondition . '
                              AND (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
@@ -200,8 +203,8 @@ if (!empty($_GET['created'])) {
                             <th>Title</th>
                             <th>Created At</th>
                             <th>Data Source</th>
-                            <th>Makeup ID</th>
-                            <th>Template ID</th>
+                            <th>Makeup</th>
+                            <th>Template</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -230,18 +233,34 @@ if (!empty($_GET['created'])) {
                                         -
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo h($dashboard['id_makeup']); ?></td>
-                                <td><?php echo h($dashboard['id_template']); ?></td>
+                                <td>
+                                    <?php if (!empty($dashboard['makeup_name'])): ?>
+                                        <?php echo h($dashboard['makeup_name']); ?>
+                                    <?php elseif (!empty($dashboard['id_makeup'])): ?>
+                                        #<?php echo h($dashboard['id_makeup']); ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (!empty($dashboard['template_title'])): ?>
+                                        <?php echo h($dashboard['template_title']); ?>
+                                    <?php elseif (!empty($dashboard['id_template'])): ?>
+                                        #<?php echo h($dashboard['id_template']); ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php $canEdit = (int)($dashboard['id_owner'] ?? 0) === (int)$user['id']; ?>
                                     <div class="inline-actions">
-                                        <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Generate prompt</a>
+                                        <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>" class="btn-ghost icon-btn" title="Generate prompt" aria-label="Generate prompt">&#9881;</a>
                                         <?php if ($canEdit): ?>
-                                            <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Edit</a>
+                                            <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>" class="btn-ghost icon-btn" title="Edit dashboard" aria-label="Edit dashboard">&#9998;</a>
                                             <form method="post" onsubmit="return confirm('Delete this dashboard?');">
                                                 <input type="hidden" name="action" value="delete_dashboard">
                                                 <input type="hidden" name="id" value="<?php echo h($dashboard['id']); ?>">
-                                                <button type="submit" class="btn-danger">Delete</button>
+                                                <button type="submit" class="btn-danger icon-btn" title="Delete dashboard" aria-label="Delete dashboard">&#128465;</button>
                                             </form>
                                         <?php endif; ?>
                                     </div>
