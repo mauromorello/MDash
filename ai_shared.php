@@ -75,6 +75,9 @@ function mdashEnsureDashboardAiColumn(PDO $pdo): void {
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             title VARCHAR(255) NOT NULL,
             date_creation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_owner INT NOT NULL DEFAULT 0,
+            is_public TINYINT(1) NOT NULL DEFAULT 0,
+            is_hidden TINYINT(1) NOT NULL DEFAULT 0,
             id_datasource INT DEFAULT NULL,
             id_makeup INT NOT NULL DEFAULT 0,
             id_ai_db INT NOT NULL DEFAULT 0,
@@ -89,6 +92,21 @@ function mdashEnsureDashboardAiColumn(PDO $pdo): void {
     $column = $pdo->query("SHOW COLUMNS FROM dashboards LIKE 'id_ai_db'")->fetch(PDO::FETCH_ASSOC);
     if (!$column) {
         $pdo->exec("ALTER TABLE dashboards ADD COLUMN id_ai_db INT NOT NULL DEFAULT 0 AFTER id_makeup");
+    }
+
+    $ownerColumn = $pdo->query("SHOW COLUMNS FROM dashboards LIKE 'id_owner'")->fetch(PDO::FETCH_ASSOC);
+    if (!$ownerColumn) {
+        $pdo->exec("ALTER TABLE dashboards ADD COLUMN id_owner INT NOT NULL DEFAULT 0 AFTER date_creation");
+    }
+
+    $publicColumn = $pdo->query("SHOW COLUMNS FROM dashboards LIKE 'is_public'")->fetch(PDO::FETCH_ASSOC);
+    if (!$publicColumn) {
+        $pdo->exec("ALTER TABLE dashboards ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0 AFTER id_owner");
+    }
+
+    $hiddenColumn = $pdo->query("SHOW COLUMNS FROM dashboards LIKE 'is_hidden'")->fetch(PDO::FETCH_ASSOC);
+    if (!$hiddenColumn) {
+        $pdo->exec("ALTER TABLE dashboards ADD COLUMN is_hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER is_public");
     }
 }
 

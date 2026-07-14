@@ -79,6 +79,9 @@ try {
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             title VARCHAR(255) NOT NULL,
             date_creation DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            id_owner INT NOT NULL DEFAULT 0,
+            is_public TINYINT(1) NOT NULL DEFAULT 0,
+            is_hidden TINYINT(1) NOT NULL DEFAULT 0,
             id_datasource INT DEFAULT NULL,
             id_makeup INT NOT NULL DEFAULT 0,
             id_ai_db INT NOT NULL DEFAULT 0,
@@ -234,11 +237,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             }
 
             $stmt = $pdo->prepare(
-                'INSERT INTO dashboards (title, id_datasource, id_makeup, id_ai_db, data_filter_prompt, data_manipulation_prompt, dashboard_prompt_1, dashboard_prompt_2, id_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO dashboards (title, id_owner, is_public, is_hidden, id_datasource, id_makeup, id_ai_db, data_filter_prompt, data_manipulation_prompt, dashboard_prompt_1, dashboard_prompt_2, id_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $legacyDatasourceId = !empty($selectedDatasourceIds) ? (int)$selectedDatasourceIds[0] : null;
             $stmt->execute([
                 $formData['title'],
+                (int)$user['id'],
+                0,
+                0,
                 $legacyDatasourceId,
                 (int)($formData['id_makeup'] !== '' ? $formData['id_makeup'] : 0),
                 0,

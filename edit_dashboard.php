@@ -147,6 +147,13 @@ try {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_dashboard' && $pdo) {
     try {
+        $ownerStmt = $pdo->prepare('SELECT id_owner FROM dashboards WHERE id = ? LIMIT 1');
+        $ownerStmt->execute([$dashboardId]);
+        $ownerRow = $ownerStmt->fetch();
+        if (!$ownerRow || (int)($ownerRow['id_owner'] ?? 0) !== (int)$user['id']) {
+            throw new RuntimeException('You can only edit your own dashboards.');
+        }
+
         $postedDatasourceIds = $_POST['id_datasources'] ?? [];
         if (!is_array($postedDatasourceIds)) {
             $postedDatasourceIds = [];
@@ -180,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         }
 
         $stmt = $pdo->prepare(
-            'UPDATE dashboards SET title = ?, id_datasource = ?, id_makeup = ?, id_ai_db = ?, data_filter_prompt = ?, data_manipulation_prompt = ?, dashboard_prompt_1 = ?, dashboard_prompt_2 = ?, id_template = ? WHERE id = ?'
+            'UPDATE dashboards SET title = ?, id_datasource = ?, id_makeup = ?, id_ai_db = ?, data_filter_prompt = ?, data_manipulation_prompt = ?, dashboard_prompt_1 = ?, dashboard_prompt_2 = ?, id_template = ? WHERE id = ? AND id_owner = ?'
         );
 
         $legacyDatasourceId = !empty($selectedDatasourceIds) ? (int)$selectedDatasourceIds[0] : null;
@@ -195,6 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             trim((string)($_POST['dashboard_prompt_2'] ?? '')),
             (int)($_POST['id_template'] ?? 0),
             $dashboardId,
+            (int)$user['id'],
         ]);
 
         mdashReplaceDashboardDatasources($pdo, $dashboardId, $selectedDatasourceIds);
@@ -208,8 +216,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 
 if ($pdo && $dashboardId > 0) {
     try {
-        $stmt = $pdo->prepare('SELECT * FROM dashboards WHERE id = ? LIMIT 1');
-        $stmt->execute([$dashboardId]);
+        $stmt = $pdo->prepare('SELECT * FROM dashboards WHERE id = ? AND id_owner = ? LIMIT 1');
+        $stmt->execute([$dashboardId, (int)$user['id']]);
         $dashboard = $stmt->fetch();
         if ($dashboard) {
             $selectedDatasourceIds = mdashFetchDashboardDatasourceIds($pdo, (int)$dashboard['id']);
@@ -218,7 +226,7 @@ if ($pdo && $dashboardId > 0) {
             }
         }
         if (!$dashboard && $error === '') {
-            $error = 'Dashboard not found.';
+            $error = 'Dashboard not found or not accessible.';
         }
     } catch (PDOException $e) {
         $error = 'Error while loading dashboard: ' . $e->getMessage();

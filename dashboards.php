@@ -51,6 +51,8 @@ $dashboards = [];
 $error = '';
 $message = '';
 $favoritesOnly = isset($_GET['favorites']) && (int)$_GET['favorites'] === 1;
+$dashboardHasPublicColumn = false;
+$dashboardHasHiddenColumn = false;
 
 try {
     $pdo = new PDO(
@@ -67,6 +69,9 @@ try {
     mdashEnsureAiDbTable($pdo);
     mdashEnsureDashboardDatasourceMapTable($pdo);
     mdashEnsureFavoritesTable($pdo);
+
+    $dashboardHasPublicColumn = (bool)$pdo->query("SHOW COLUMNS FROM dashboards LIKE 'is_public'")->fetch(PDO::FETCH_ASSOC);
+    $dashboardHasHiddenColumn = (bool)$pdo->query("SHOW COLUMNS FROM dashboards LIKE 'is_hidden'")->fetch(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $error = $e->getMessage();
 }
@@ -88,12 +93,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     $dashboardId = (int)($_POST['id'] ?? 0);
     if ($dashboardId > 0) {
         try {
+            $ownerStmt = $pdo->prepare('SELECT id_owner FROM dashboards WHERE id = ? LIMIT 1');
+            $ownerStmt->execute([$dashboardId]);
+            $ownerRow = $ownerStmt->fetch();
+            if (!$ownerRow || (int)($ownerRow['id_owner'] ?? 0) !== (int)$user['id']) {
+                throw new RuntimeException('You can only delete your own dashboards.');
+            }
+
             $pdo->prepare('DELETE FROM dashboard_datasources WHERE id_dashboard = ?')->execute([$dashboardId]);
             $stmt = $pdo->prepare('DELETE FROM dashboards WHERE id = ?');
             $stmt->execute([$dashboardId]);
             header('Location: dashboards.php?deleted=1');
             exit;
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             $error = 'Error while deleting the dashboard: ' . $e->getMessage();
         }
     }
@@ -101,6 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
 if ($pdo) {
     try {
+        $visibilityCondition = 'd.id_owner = :viewer_id';
+        if ($dashboardHasPublicColumn && $dashboardHasHiddenColumn) {
+            $visibilityCondition = '(d.id_owner = :viewer_id OR (d.is_public = 1 AND d.is_hidden = 0))';
+        } elseif ($dashboardHasPublicColumn) {
+            $visibilityCondition = '(d.id_owner = :viewer_id OR d.is_public = 1)';
+        }
+
         $stmt = $pdo->prepare(
             'SELECT d.*, u.filename AS datasource_filename, a.title AS ai_title, a.provider AS ai_provider, a.model AS ai_model,
                     CASE WHEN f.favorite_id IS NULL THEN 0 ELSE 1 END AS is_favorite,
@@ -114,11 +133,13 @@ if ($pdo) {
              LEFT JOIN uploads u ON u.id = d.id_datasource
              LEFT JOIN ai_db a ON a.id = d.id_ai_db
              LEFT JOIN user_favorites f ON f.favorite_type = "dashboard" AND f.favorite_id = d.id AND f.id_owner = :favorite_owner
-             WHERE (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
+                         WHERE ' . $visibilityCondition . '
+                             AND (:favorites_only = 0 OR f.favorite_id IS NOT NULL)
              ORDER BY d.id DESC'
         );
         $stmt->execute([
             'favorite_owner' => (int)$user['id'],
+                        'viewer_id' => (int)$user['id'],
             'favorites_only' => $favoritesOnly ? 1 : 0,
         ]);
         $dashboards = $stmt->fetchAll();
@@ -212,14 +233,17 @@ if (!empty($_GET['created'])) {
                                 <td><?php echo h($dashboard['id_makeup']); ?></td>
                                 <td><?php echo h($dashboard['id_template']); ?></td>
                                 <td>
+                                    <?php $canEdit = (int)($dashboard['id_owner'] ?? 0) === (int)$user['id']; ?>
                                     <div class="inline-actions">
                                         <a href="dashboard_prompt.php?id=<?php echo h($dashboard['id']); ?>">Generate prompt</a>
-                                        <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Edit</a>
-                                        <form method="post" onsubmit="return confirm('Delete this dashboard?');">
-                                            <input type="hidden" name="action" value="delete_dashboard">
-                                            <input type="hidden" name="id" value="<?php echo h($dashboard['id']); ?>">
-                                            <button type="submit" class="btn-danger">Delete</button>
-                                        </form>
+                                        <?php if ($canEdit): ?>
+                                            <a href="edit_dashboard.php?id=<?php echo h($dashboard['id']); ?>">Edit</a>
+                                            <form method="post" onsubmit="return confirm('Delete this dashboard?');">
+                                                <input type="hidden" name="action" value="delete_dashboard">
+                                                <input type="hidden" name="id" value="<?php echo h($dashboard['id']); ?>">
+                                                <button type="submit" class="btn-danger">Delete</button>
+                                            </form>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
