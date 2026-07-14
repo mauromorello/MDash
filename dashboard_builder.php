@@ -139,7 +139,13 @@ try {
         $pdo->exec("ALTER TABLE templates ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0");
     }
 
-    $uploadsStmt = $pdo->query("SELECT id, filename, description FROM uploads ORDER BY id DESC");
+    $uploadsStmt = $pdo->prepare(
+        "SELECT id, filename, description
+         FROM uploads
+         WHERE id_owner = ? OR is_public = 1
+         ORDER BY id DESC"
+    );
+    $uploadsStmt->execute([(int)$user['id']]);
     $uploads = $uploadsStmt->fetchAll();
 
     $templatesStmt = $pdo->prepare(
@@ -218,9 +224,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             }
 
             if (!empty($selectedDatasourceIds)) {
-                $checkDatasource = $pdo->prepare('SELECT id FROM uploads WHERE id = ? LIMIT 1');
+                $checkDatasource = $pdo->prepare('SELECT id FROM uploads WHERE id = ? AND (id_owner = ? OR is_public = 1) LIMIT 1');
                 foreach ($selectedDatasourceIds as $selectedDatasourceId) {
-                    $checkDatasource->execute([$selectedDatasourceId]);
+                    $checkDatasource->execute([$selectedDatasourceId, (int)$user['id']]);
                     if (!$checkDatasource->fetch()) {
                         throw new RuntimeException('Selected data source #' . $selectedDatasourceId . ' not found.');
                     }
