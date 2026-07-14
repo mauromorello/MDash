@@ -327,7 +327,7 @@ Expected variables (with current defaults where present):
 - `DB_HOST` (default `localhost`)
 - `DB_NAME` (default `mdash`)
 - `DB_USER` (default `root`)
-- `DB_PASS` (default `zxca$dqwe123`)
+- `DB_PASS` (default ``)
 
 Note: generation now uses API keys stored in `ai_db.api_key` per profile.
 
