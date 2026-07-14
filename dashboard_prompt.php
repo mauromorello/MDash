@@ -426,10 +426,10 @@ if ($pdo && $dashboardId > 0) {
             }
 
             if (!empty($datasourceIds)) {
-                $uploadStmt = $pdo->prepare('SELECT * FROM uploads WHERE id = ? LIMIT 1');
+                $uploadStmt = $pdo->prepare('SELECT * FROM uploads WHERE id = ? AND (id_owner = ? OR is_public = 1) LIMIT 1');
                 $uploads = [];
                 foreach ($datasourceIds as $datasourceId) {
-                    $uploadStmt->execute([(int)$datasourceId]);
+                    $uploadStmt->execute([(int)$datasourceId, (int)$user['id']]);
                     $row = $uploadStmt->fetch();
                     if ($row) {
                         $uploads[] = $row;
