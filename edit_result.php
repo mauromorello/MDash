@@ -583,7 +583,9 @@ include __DIR__ . '/header.php';
         const aiWaitOverlay = document.getElementById('aiWaitOverlay');
         const aiWaitTimer = document.getElementById('aiWaitTimer');
         const aiFixButton = document.querySelector('button[name="action"][value="ai_fix_result"]');
+        const editResultForm = document.querySelector('form[method="post"]');
         let aiWaitInterval = null;
+        let aiWaitStarted = false;
 
         function formatElapsed(seconds) {
             if (seconds < 60) {
@@ -594,32 +596,43 @@ include __DIR__ . '/header.php';
             return mins + 'm ' + secs + 's';
         }
 
-        if (aiFixButton && aiWaitOverlay && aiWaitTimer) {
-            aiFixButton.addEventListener('click', function () {
-                const form = aiFixButton.closest('form');
-                if (!form) {
+        function startAiWaitOverlay() {
+            if (aiWaitStarted || !aiWaitOverlay || !aiWaitTimer) {
+                return;
+            }
+
+            aiWaitStarted = true;
+            aiWaitOverlay.classList.remove('hidden');
+
+            let elapsed = 0;
+            aiWaitTimer.textContent = formatElapsed(elapsed);
+
+            if (aiWaitInterval) {
+                clearInterval(aiWaitInterval);
+            }
+            aiWaitInterval = setInterval(function () {
+                elapsed += 1;
+                aiWaitTimer.textContent = formatElapsed(elapsed);
+            }, 1000);
+
+            if (aiFixButton) {
+                aiFixButton.disabled = true;
+            }
+        }
+
+        if (editResultForm && aiWaitOverlay && aiWaitTimer) {
+            editResultForm.addEventListener('submit', function (event) {
+                const submitter = event.submitter;
+                const isAiFixSubmit = submitter
+                    && submitter.name === 'action'
+                    && submitter.value === 'ai_fix_result';
+
+                if (!isAiFixSubmit) {
                     return;
                 }
 
-                aiWaitOverlay.classList.remove('hidden');
-                let elapsed = 0;
-                aiWaitTimer.textContent = formatElapsed(elapsed);
-
-                if (aiWaitInterval) {
-                    clearInterval(aiWaitInterval);
-                }
-                aiWaitInterval = setInterval(function () {
-                    elapsed += 1;
-                    aiWaitTimer.textContent = formatElapsed(elapsed);
-                }, 1000);
-
-                // Keep overlay visible until server response/redirect.
-                form.addEventListener('submit', function () {
-                    if (aiFixButton.disabled) {
-                        return;
-                    }
-                    aiFixButton.disabled = true;
-                }, { once: true });
+                // Overlay remains visible until server response/redirect ends the current page lifecycle.
+                startAiWaitOverlay();
             });
         }
 
