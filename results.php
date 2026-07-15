@@ -245,7 +245,7 @@ try {
         $resultId = (int)($_POST['result_id'] ?? 0);
 
         if ($resultId > 0 && in_array($action, ['set_hidden', 'set_public', 'delete_result', 'save_thumbnail', 'clone_result', 'toggle_favorite'], true)) {
-            $ownerStmt = $pdo->prepare('SELECT id, id_owner, path FROM results WHERE id = ? LIMIT 1');
+            $ownerStmt = $pdo->prepare('SELECT id, id_owner, path, thumbnail_path FROM results WHERE id = ? LIMIT 1');
             $ownerStmt->execute([$resultId]);
             $ownerRow = $ownerStmt->fetch();
 
@@ -378,11 +378,49 @@ try {
                 }
 
                 if ($action === 'delete_result') {
+                    $foldersToDelete = [];
+                    $resultsRoot = __DIR__ . DIRECTORY_SEPARATOR . 'results';
+                    $defaultResultFolder = $resultsRoot . DIRECTORY_SEPARATOR . $resultId;
+
+                    $candidateRelativePaths = [
+                        (string)($ownerRow['path'] ?? ''),
+                        (string)($ownerRow['thumbnail_path'] ?? ''),
+                        'results/' . $resultId,
+                    ];
+
+                    foreach ($candidateRelativePaths as $relativeCandidate) {
+                        $relativeCandidate = trim($relativeCandidate);
+                        if ($relativeCandidate === '') {
+                            continue;
+                        }
+
+                        $absoluteCandidate = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativeCandidate);
+                        $folderCandidate = is_dir($absoluteCandidate) ? $absoluteCandidate : dirname($absoluteCandidate);
+                        if (!is_dir($folderCandidate)) {
+                            continue;
+                        }
+
+                        $realFolder = realpath($folderCandidate);
+                        $realResultsRoot = realpath($resultsRoot);
+                        if ($realFolder === false || $realResultsRoot === false) {
+                            continue;
+                        }
+
+                        if (str_starts_with($realFolder, $realResultsRoot . DIRECTORY_SEPARATOR) || $realFolder === $realResultsRoot) {
+                            $foldersToDelete[$realFolder] = $realFolder;
+                        }
+                    }
+
+                    if (is_dir($defaultResultFolder)) {
+                        $foldersToDelete[$defaultResultFolder] = $defaultResultFolder;
+                    }
+
                     $deleteStmt = $pdo->prepare('DELETE FROM results WHERE id = ? AND id_owner = ?');
                     $deleteStmt->execute([$resultId, (int)$user['id']]);
 
-                    $resultFolder = __DIR__ . DIRECTORY_SEPARATOR . 'results' . DIRECTORY_SEPARATOR . $resultId;
-                    removeDirectoryRecursive($resultFolder);
+                    foreach ($foldersToDelete as $folderToDelete) {
+                        removeDirectoryRecursive($folderToDelete);
+                    }
                     $message = 'Dashboard deleted permanently.';
                 }
 
