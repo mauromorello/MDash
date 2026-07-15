@@ -374,7 +374,7 @@ $pageTitle = 'Edit Result';
 $pageHeadExtra = [
     '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">',
     '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">',
-    '<style>.readonly-field-vis{background:#f3f4f6!important;color:#4b5563!important;border:1px dashed #9ca3af!important;cursor:not-allowed}.readonly-label{display:flex;align-items:center;gap:.4rem}.readonly-badge{font-size:.72rem;line-height:1;padding:.18rem .42rem;border-radius:999px;background:#e5e7eb;color:#374151;text-transform:uppercase;letter-spacing:.03em}.CodeMirror{height:560px;border:1px solid #374151;border-radius:10px;font-size:13px}.ai-fix-panel{margin-top:14px;padding:14px;border:1px solid #d1d5db;border-radius:10px;background:#f8fafc}</style>',
+    '<style>.readonly-field-vis{background:#f3f4f6!important;color:#4b5563!important;border:1px dashed #9ca3af!important;cursor:not-allowed}.readonly-label{display:flex;align-items:center;gap:.4rem}.readonly-badge{font-size:.72rem;line-height:1;padding:.18rem .42rem;border-radius:999px;background:#e5e7eb;color:#374151;text-transform:uppercase;letter-spacing:.03em}.CodeMirror{height:560px;border:1px solid #374151;border-radius:10px;font-size:13px}.ai-fix-panel{margin-top:14px;padding:14px;border:1px solid #d1d5db;border-radius:10px;background:#f8fafc}.ai-wait-overlay{position:fixed;inset:0;background:rgba(15,23,42,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}.ai-wait-overlay.hidden{display:none}.ai-wait-card{width:min(560px,100%);background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;box-shadow:0 20px 40px rgba(2,6,23,.25)}.ai-wait-title{margin:0 0 8px;font-size:1.1rem;font-weight:700;color:#0f172a}.ai-wait-meta{margin:0 0 14px;color:#334155}.ai-wait-timer{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:1.25rem;font-weight:700;color:#111827;background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:8px 12px;display:inline-block}</style>',
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>',
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>',
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>',
@@ -549,6 +549,15 @@ include __DIR__ . '/header.php';
         <?php endif; ?>
     </div>
 
+    <div id="aiWaitOverlay" class="ai-wait-overlay hidden" role="status" aria-live="polite" aria-label="AI fix in progress">
+        <div class="ai-wait-card">
+            <h2 class="ai-wait-title">Applying AI fix</h2>
+            <p class="ai-wait-meta">Please wait while the AI is generating the updated code.</p>
+            <p class="ai-wait-meta">Elapsed time: <span id="aiWaitTimer" class="ai-wait-timer">0s</span></p>
+            <p class="ai-wait-meta">This request may take more or less time depending on the AI model being used.</p>
+        </div>
+    </div>
+
     <script>
         const htmlCodeTextarea = document.getElementById('html_code');
         if (htmlCodeTextarea && window.CodeMirror) {
@@ -569,6 +578,49 @@ include __DIR__ . '/header.php';
                     htmlCodeTextarea.value = codeEditor.getValue();
                 });
             }
+        }
+
+        const aiWaitOverlay = document.getElementById('aiWaitOverlay');
+        const aiWaitTimer = document.getElementById('aiWaitTimer');
+        const aiFixButton = document.querySelector('button[name="action"][value="ai_fix_result"]');
+        let aiWaitInterval = null;
+
+        function formatElapsed(seconds) {
+            if (seconds < 60) {
+                return seconds + 's';
+            }
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return mins + 'm ' + secs + 's';
+        }
+
+        if (aiFixButton && aiWaitOverlay && aiWaitTimer) {
+            aiFixButton.addEventListener('click', function () {
+                const form = aiFixButton.closest('form');
+                if (!form) {
+                    return;
+                }
+
+                aiWaitOverlay.classList.remove('hidden');
+                let elapsed = 0;
+                aiWaitTimer.textContent = formatElapsed(elapsed);
+
+                if (aiWaitInterval) {
+                    clearInterval(aiWaitInterval);
+                }
+                aiWaitInterval = setInterval(function () {
+                    elapsed += 1;
+                    aiWaitTimer.textContent = formatElapsed(elapsed);
+                }, 1000);
+
+                // Keep overlay visible until server response/redirect.
+                form.addEventListener('submit', function () {
+                    if (aiFixButton.disabled) {
+                        return;
+                    }
+                    aiFixButton.disabled = true;
+                }, { once: true });
+            });
         }
 
         const logoutBtn = document.getElementById('logoutBtn');
