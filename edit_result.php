@@ -229,6 +229,7 @@ $result = null;
 $aiProfiles = [];
 $defaultFixPrompt = getDefaultFixPromptTemplate();
 $resultId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+$postedAction = (string)($_POST['action'] ?? $_POST['action_intent'] ?? '');
 
 if ($resultId <= 0) {
     $error = 'Invalid result id.';
@@ -262,8 +263,8 @@ try {
         }
     }
 
-    if (!$error && $result && $_SERVER['REQUEST_METHOD'] === 'POST' && in_array((string)($_POST['action'] ?? ''), ['save_result', 'ai_fix_result'], true)) {
-        $action = (string)($_POST['action'] ?? '');
+    if (!$error && $result && $_SERVER['REQUEST_METHOD'] === 'POST' && in_array($postedAction, ['save_result', 'ai_fix_result'], true)) {
+        $action = $postedAction;
         $path = trim((string)($_POST['path'] ?? ''));
         $idTemplate = (int)($_POST['id_template'] ?? 0);
         $idAiDb = (int)($_POST['id_ai_db'] ?? 0);
@@ -366,7 +367,11 @@ try {
         }
     }
 } catch (Throwable $e) {
-    $error = $e->getMessage();
+    if ($postedAction === 'ai_fix_result') {
+        $error = 'AI fix failed: ' . $e->getMessage();
+    } else {
+        $error = $e->getMessage();
+    }
 }
 ?>
 <?php
@@ -407,6 +412,7 @@ include __DIR__ . '/header.php';
             <div class="card">
                 <form method="post">
                     <input type="hidden" name="id" value="<?php echo h((int)$result['id']); ?>">
+                    <input type="hidden" name="action_intent" id="action_intent" value="">
 
                     <div class="form-grid">
                         <div class="field">
@@ -583,6 +589,8 @@ include __DIR__ . '/header.php';
         const aiWaitOverlay = document.getElementById('aiWaitOverlay');
         const aiWaitTimer = document.getElementById('aiWaitTimer');
         const aiFixButton = document.querySelector('button[name="action"][value="ai_fix_result"]');
+        const saveResultButton = document.querySelector('button[name="action"][value="save_result"]');
+        const actionIntentInput = document.getElementById('action_intent');
         const editResultForm = document.querySelector('form[method="post"]');
         let aiWaitInterval = null;
         let aiWaitStarted = false;
@@ -615,9 +623,18 @@ include __DIR__ . '/header.php';
                 aiWaitTimer.textContent = formatElapsed(elapsed);
             }, 1000);
 
-            if (aiFixButton) {
-                aiFixButton.disabled = true;
-            }
+        }
+
+        if (aiFixButton && actionIntentInput) {
+            aiFixButton.addEventListener('click', function () {
+                actionIntentInput.value = 'ai_fix_result';
+            });
+        }
+
+        if (saveResultButton && actionIntentInput) {
+            saveResultButton.addEventListener('click', function () {
+                actionIntentInput.value = 'save_result';
+            });
         }
 
         if (editResultForm && aiWaitOverlay && aiWaitTimer) {
@@ -626,8 +643,9 @@ include __DIR__ . '/header.php';
                 const isAiFixSubmit = submitter
                     && submitter.name === 'action'
                     && submitter.value === 'ai_fix_result';
+                const isAiFixFromFallback = actionIntentInput && actionIntentInput.value === 'ai_fix_result';
 
-                if (!isAiFixSubmit) {
+                if (!isAiFixSubmit && !isAiFixFromFallback) {
                     return;
                 }
 
