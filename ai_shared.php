@@ -300,6 +300,114 @@ function mdashProviderLabel(string $provider): string {
     return $providers[$key] ?? $provider;
 }
 
+function mdashEnsureAiTimingTable(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS ai_timing (
+            id INT NOT NULL,
+            id_owner INT NOT NULL,
+            id_ai INT NOT NULL,
+            id_dashboard INT NOT NULL,
+            date DATETIME NOT NULL,
+            seconds INT NOT NULL DEFAULT 0,
+            id_dataset INT NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
+function mdashRecordAiTiming(PDO $pdo, int $ownerId, int $aiId, int $dashboardId, int $seconds, int $datasetId): void {
+    if ($ownerId <= 0 || $aiId <= 0) {
+        return;
+    }
+
+    mdashEnsureAiTimingTable($pdo);
+
+    $nextIdStmt = $pdo->query('SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ai_timing');
+    $nextId = (int)($nextIdStmt->fetch(PDO::FETCH_ASSOC)['next_id'] ?? 1);
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO ai_timing (id, id_owner, id_ai, id_dashboard, date, seconds, id_dataset)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $nextId,
+        $ownerId,
+        $aiId,
+        max(0, $dashboardId),
+        date('Y-m-d H:i:s'),
+        max(0, $seconds),
+        max(0, $datasetId),
+    ]);
+}
+
+function mdashFetchAiTimingByProfile(PDO $pdo, array $profiles): array {
+    mdashEnsureAiTimingTable($pdo);
+
+    $profileMap = [];
+    $modelKeys = [];
+    foreach ($profiles as $profile) {
+        $aiId = (int)($profile['id'] ?? 0);
+        if ($aiId <= 0) {
+            continue;
+        }
+
+        $model = trim((string)($profile['model'] ?? ''));
+        $modelKey = strtolower($model);
+        if ($modelKey === '') {
+            continue;
+        }
+
+        $profileMap[$aiId] = [
+            'model' => $model,
+            'model_key' => $modelKey,
+            'avg_seconds' => 0,
+            'sample_count' => 0,
+        ];
+        $modelKeys[$modelKey] = true;
+    }
+
+    if (empty($profileMap) || empty($modelKeys)) {
+        return $profileMap;
+    }
+
+    $keys = array_keys($modelKeys);
+    $placeholders = implode(', ', array_fill(0, count($keys), '?'));
+    $stmt = $pdo->prepare(
+        'SELECT LOWER(TRIM(a.model)) AS model_key,
+                AVG(t.seconds) AS avg_seconds,
+                COUNT(*) AS sample_count
+         FROM ai_timing t
+         INNER JOIN ai_db a ON a.id = t.id_ai
+         WHERE t.seconds > 0
+           AND LOWER(TRIM(a.model)) IN (' . $placeholders . ')
+         GROUP BY LOWER(TRIM(a.model))'
+    );
+    $stmt->execute($keys);
+
+    $aggregates = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $key = strtolower(trim((string)($row['model_key'] ?? '')));
+        if ($key === '') {
+            continue;
+        }
+        $aggregates[$key] = [
+            'avg_seconds' => (int)round((float)($row['avg_seconds'] ?? 0)),
+            'sample_count' => (int)($row['sample_count'] ?? 0),
+        ];
+    }
+
+    foreach ($profileMap as $aiId => $info) {
+        $modelKey = $info['model_key'];
+        if (!isset($aggregates[$modelKey])) {
+            continue;
+        }
+
+        $profileMap[$aiId]['avg_seconds'] = max(0, (int)$aggregates[$modelKey]['avg_seconds']);
+        $profileMap[$aiId]['sample_count'] = max(0, (int)$aggregates[$modelKey]['sample_count']);
+    }
+
+    return $profileMap;
+}
+
 function mdashFavoriteEntityTypes(): array {
     return [
         'template' => ['table' => 'templates', 'id_column' => 'id'],

@@ -389,6 +389,7 @@ $template = null;
 $makeup = null;
     $aiProfile = null;
     $aiProfiles = [];
+$aiTimingByProfile = [];
 $resultFilePath = '';
 $generatedHtml = '';
 $generationSteps = [];
@@ -468,6 +469,7 @@ if ($pdo && $dashboardId > 0) {
         }
 
         $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id'], false);
+        $aiTimingByProfile = mdashFetchAiTimingByProfile($pdo, $aiProfiles);
 
         if ($selectedAiId > 0) {
             $aiProfile = findAiProfileById($aiProfiles, $selectedAiId);
@@ -520,8 +522,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
                 $generationSteps[] = 'No AI profile selected. Falling back to environment credentials if available.';
             }
 
+            $aiStartedAt = microtime(true);
             $generatedHtml = callConfiguredAiGenerateHtml((string)($_POST['master_prompt'] ?? $masterPrompt), $aiProfile ?? []);
-            $generationSteps[] = 'AI response received successfully.';
+            $elapsedSeconds = (int)max(1, round(microtime(true) - $aiStartedAt));
+            $datasetIdForTiming = 0;
+            if (!empty($dashboard['__uploads'][0]['id'])) {
+                $datasetIdForTiming = (int)$dashboard['__uploads'][0]['id'];
+            } elseif (!empty($dashboard['id_datasource'])) {
+                $datasetIdForTiming = (int)$dashboard['id_datasource'];
+            }
+            mdashRecordAiTiming(
+                $pdo,
+                (int)$user['id'],
+                (int)($aiProfile['id'] ?? 0),
+                (int)$dashboardId,
+                $elapsedSeconds,
+                $datasetIdForTiming
+            );
+            $generationSteps[] = 'AI response received successfully in ' . $elapsedSeconds . ' seconds.';
             $generationSteps[] = 'Generated HTML length: ' . strlen($generatedHtml) . ' bytes.';
 
             $resultsDir = __DIR__ . DIRECTORY_SEPARATOR . 'results';
@@ -800,8 +818,17 @@ include __DIR__ . '/header.php';
                             <option value="">No active AI profile available</option>
                         <?php else: ?>
                             <?php foreach ($aiProfiles as $profile): ?>
-                                <?php $profileId = (int)($profile['id'] ?? 0); ?>
-                                <option value="<?php echo h($profileId); ?>"<?php echo $profileId === (int)$selectedAiId ? ' selected' : ''; ?>>
+                                <?php
+                                    $profileId = (int)($profile['id'] ?? 0);
+                                    $timingInfo = $aiTimingByProfile[$profileId] ?? ['avg_seconds' => 0, 'sample_count' => 0, 'model' => (string)($profile['model'] ?? '')];
+                                ?>
+                                <option
+                                    value="<?php echo h($profileId); ?>"
+                                    data-ai-model="<?php echo h((string)$timingInfo['model']); ?>"
+                                    data-avg-seconds="<?php echo h((int)($timingInfo['avg_seconds'] ?? 0)); ?>"
+                                    data-sample-count="<?php echo h((int)($timingInfo['sample_count'] ?? 0)); ?>"
+                                    <?php echo $profileId === (int)$selectedAiId ? ' selected' : ''; ?>
+                                >
                                     #<?php echo h($profileId); ?> - <?php echo h((string)($profile['title'] ?? 'AI profile')); ?> [<?php echo h((string)($profile['provider'] ?? 'gemini')); ?> / <?php echo h((string)($profile['model'] ?? 'gemini-flash-latest')); ?>]
                                 </option>
                             <?php endforeach; ?>
@@ -855,6 +882,14 @@ include __DIR__ . '/header.php';
             </div>
             <h2 class="generation-overlay-title">Generating dashboard...</h2>
             <p class="generation-overlay-subtitle">Your favourite AI is working... Please wait a moment.</p>
+            <div class="generation-overlay-timing">
+                <p class="generation-overlay-timing-meta">Model average: <strong id="generationOverlayAvg">n/a</strong> (<span id="generationOverlayModel">model</span>)</p>
+                <p class="generation-overlay-timing-meta">Current request: <strong id="generationOverlayElapsed">0s</strong></p>
+                <div class="generation-overlay-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Estimated generation progress">
+                    <div id="generationOverlayProgressFill" class="generation-overlay-progress-fill"></div>
+                </div>
+                <p class="generation-overlay-timing-meta">Estimated progress: <strong id="generationOverlayProgressText">0%</strong></p>
+            </div>
             <div class="generation-overlay-log-panel">
                 <ul id="generationOverlayLog" class="generation-overlay-log">
                     <li>Selecting the right threads from data</li>
@@ -872,9 +907,85 @@ include __DIR__ . '/header.php';
         const logList = document.getElementById('generationOverlayLog');
         const generateForm = document.getElementById('generateDashboardForm');
         const generateBtn = document.getElementById('generateDashboardBtn');
+        const profileSelect = document.getElementById('id_ai_db');
+        const overlayAvg = document.getElementById('generationOverlayAvg');
+        const overlayModel = document.getElementById('generationOverlayModel');
+        const overlayElapsed = document.getElementById('generationOverlayElapsed');
+        const overlayProgressFill = document.getElementById('generationOverlayProgressFill');
+        const overlayProgressText = document.getElementById('generationOverlayProgressText');
+        const overlayProgressTrack = overlay ? overlay.querySelector('.generation-overlay-progress-track') : null;
 
         let logTimer = null;
         let submitting = false;
+        let timingTimer = null;
+        let elapsedSeconds = 0;
+        let expectedSeconds = 20;
+
+        function formatElapsed(seconds) {
+            if (seconds < 60) {
+                return seconds + 's';
+            }
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return mins + 'm ' + secs + 's';
+        }
+
+        function getSelectedTimingInfo() {
+            if (!profileSelect || !profileSelect.options || profileSelect.selectedIndex < 0) {
+                return { model: 'model', avgSeconds: 0, sampleCount: 0 };
+            }
+
+            const option = profileSelect.options[profileSelect.selectedIndex];
+            const avgSeconds = parseInt(option.dataset.avgSeconds || '0', 10);
+            const sampleCount = parseInt(option.dataset.sampleCount || '0', 10);
+            return {
+                model: option.dataset.aiModel || 'model',
+                avgSeconds: Number.isFinite(avgSeconds) ? Math.max(0, avgSeconds) : 0,
+                sampleCount: Number.isFinite(sampleCount) ? Math.max(0, sampleCount) : 0,
+            };
+        }
+
+        function computeEstimatedProgress(currentElapsed, expected) {
+            const expectedSafe = Math.max(4, expected);
+            const ratio = currentElapsed / expectedSafe;
+            if (ratio <= 1) {
+                return Math.min(95, Math.round(ratio * 92));
+            }
+
+            const extra = ratio - 1;
+            return Math.min(99, Math.round(92 + (1 - Math.exp(-extra)) * 7));
+        }
+
+        function renderTiming() {
+            if (overlayElapsed) {
+                overlayElapsed.textContent = formatElapsed(elapsedSeconds);
+            }
+
+            const progress = computeEstimatedProgress(elapsedSeconds, expectedSeconds);
+            if (overlayProgressFill) {
+                overlayProgressFill.style.width = progress + '%';
+            }
+            if (overlayProgressText) {
+                overlayProgressText.textContent = progress + '%';
+            }
+            if (overlayProgressTrack) {
+                overlayProgressTrack.setAttribute('aria-valuenow', String(progress));
+            }
+        }
+
+        function syncOverlayTimingMeta() {
+            const info = getSelectedTimingInfo();
+            expectedSeconds = info.avgSeconds > 0 ? info.avgSeconds : 20;
+
+            if (overlayModel) {
+                overlayModel.textContent = info.model || 'model';
+            }
+            if (overlayAvg) {
+                overlayAvg.textContent = info.avgSeconds > 0
+                    ? formatElapsed(info.avgSeconds) + ' average' + (info.sampleCount > 0 ? ' on ' + info.sampleCount + ' run(s)' : '')
+                    : 'no history yet';
+            }
+        }
 
         function startLogProgress() {
             if (!logList) {
@@ -923,6 +1034,18 @@ include __DIR__ . '/header.php';
                 return;
             }
 
+            syncOverlayTimingMeta();
+            elapsedSeconds = 0;
+            renderTiming();
+
+            if (timingTimer) {
+                window.clearInterval(timingTimer);
+            }
+            timingTimer = window.setInterval(function () {
+                elapsedSeconds += 1;
+                renderTiming();
+            }, 1000);
+
             overlay.classList.add('active');
             overlay.setAttribute('aria-hidden', 'false');
             startLogProgress();
@@ -936,6 +1059,15 @@ include __DIR__ . '/header.php';
             overlay.classList.remove('active');
             overlay.setAttribute('aria-hidden', 'true');
             stopLogProgress();
+            if (timingTimer) {
+                window.clearInterval(timingTimer);
+                timingTimer = null;
+            }
+        }
+
+        if (profileSelect) {
+            profileSelect.addEventListener('change', syncOverlayTimingMeta);
+            syncOverlayTimingMeta();
         }
 
         if (generateForm) {

@@ -8,6 +8,7 @@ The project provides:
 - template and makeup profile management;
 - dashboard definition, prompt composition, and AI generation (Gemini/OpenRouter);
 - AI profile management with owner-only connection tests and diagnostics;
+- AI timing tracking by request (`ai_timing`) with model-based average wait estimation;
 - generated result persistence with preview and thumbnail management.
 - owner-only single result editing with full HTML markup support.
 
@@ -61,6 +62,10 @@ The project provides:
   - Gemini: `:generateContent` endpoint + Gemini payload
   - OpenRouter: `/chat/completions` endpoint + chat payload
 - Generation includes a fullscreen loading overlay with JS canvas animation and rotating phrases read from `options` table entries.
+- Loading overlays for AI generation/fix now show:
+  - average wait time by selected AI model (seconds)
+  - live elapsed timer for the current request
+  - estimated progress bar based on historical average duration for that model
 - Generation log includes practical error hints (invalid endpoint/API key/token quota/model availability).
 - Generated HTML is saved to `results/<id>/dashboard.html`.
 - A thumbnail is generated/saved and recorded in DB.
@@ -258,6 +263,20 @@ n_download INT NOT NULL DEFAULT 0,
 n_clone INT NOT NULL DEFAULT 0,
 tags TEXT NOT NULL
 ```
+
+### `ai_timing`
+
+```sql
+id INT NOT NULL,
+id_owner INT NOT NULL,
+id_ai INT NOT NULL,
+id_dashboard INT NOT NULL,
+date DATETIME NOT NULL,
+seconds INT NOT NULL DEFAULT 0,
+id_dataset INT NOT NULL
+```
+
+Used to store AI response times per request. The UI computes average waiting time by AI model using these records and drives the waiting overlays progress estimate.
 
 Canonical DDL used for the current record layout:
 

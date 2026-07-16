@@ -1105,7 +1105,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
 
             $userTemplate = getUploadAiPromptTemplate($pdo, (int)$user['id']);
             $prompt = buildUploadAutofillPrompt($userTemplate, $uploadRecord, $datasetSample, $csvFormatAnalysis);
+            $aiStartedAt = microtime(true);
             $generatedText = generateTextFromAiProfile($prompt, $aiProfile);
+            $elapsedSeconds = (int)max(1, round(microtime(true) - $aiStartedAt));
+            mdashRecordAiTiming(
+                $pdo,
+                (int)$user['id'],
+                (int)($aiProfile['id'] ?? 0),
+                0,
+                $elapsedSeconds,
+                $uploadId
+            );
             $parsed = parseAutofillResponse($generatedText);
             $prompt2Final = trim((string)$parsed['prompt_2']);
 

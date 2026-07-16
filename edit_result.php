@@ -227,6 +227,7 @@ $error = '';
 $message = '';
 $result = null;
 $aiProfiles = [];
+$aiTimingByProfile = [];
 $defaultFixPrompt = getDefaultFixPromptTemplate();
 $resultId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $postedAction = (string)($_POST['action'] ?? $_POST['action_intent'] ?? '');
@@ -248,6 +249,7 @@ try {
 
     mdashEnsureResultsAiColumns($pdo);
     $aiProfiles = mdashFetchAccessibleAiProfiles($pdo, (int)$user['id']);
+    $aiTimingByProfile = mdashFetchAiTimingByProfile($pdo, $aiProfiles);
 
     if ($resultId > 0) {
         $stmt = $pdo->prepare('SELECT * FROM results WHERE id = ? LIMIT 1');
@@ -304,7 +306,17 @@ try {
                 ? str_replace('{{CURRENT_HTML}}', $htmlCode, $aiFixPrompt)
                 : ($aiFixPrompt . "\n\nCurrent code:\n" . $htmlCode);
 
+            $aiStartedAt = microtime(true);
             $htmlCode = callConfiguredAiGenerateHtml($promptForAi, $aiProfile);
+            $elapsedSeconds = (int)max(1, round(microtime(true) - $aiStartedAt));
+            mdashRecordAiTiming(
+                $pdo,
+                (int)$user['id'],
+                (int)($aiProfile['id'] ?? 0),
+                0,
+                $elapsedSeconds,
+                0
+            );
             if (trim($htmlCode) === '') {
                 throw new RuntimeException('AI returned empty HTML code.');
             }
@@ -379,7 +391,7 @@ $pageTitle = 'Edit Result';
 $pageHeadExtra = [
     '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">',
     '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">',
-    '<style>.readonly-field-vis{background:#f3f4f6!important;color:#4b5563!important;border:1px dashed #9ca3af!important;cursor:not-allowed}.readonly-label{display:flex;align-items:center;gap:.4rem}.readonly-badge{font-size:.72rem;line-height:1;padding:.18rem .42rem;border-radius:999px;background:#e5e7eb;color:#374151;text-transform:uppercase;letter-spacing:.03em}.CodeMirror{height:560px;border:1px solid #374151;border-radius:10px;font-size:13px}.ai-fix-panel{margin-top:14px;padding:14px;border:1px solid #d1d5db;border-radius:10px;background:#f8fafc}.ai-wait-overlay{position:fixed;inset:0;background:rgba(15,23,42,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}.ai-wait-overlay.hidden{display:none}.ai-wait-card{width:min(560px,100%);background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;box-shadow:0 20px 40px rgba(2,6,23,.25)}.ai-wait-title{margin:0 0 8px;font-size:1.1rem;font-weight:700;color:#0f172a}.ai-wait-meta{margin:0 0 14px;color:#334155}.ai-wait-timer{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:1.25rem;font-weight:700;color:#111827;background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:8px 12px;display:inline-block}</style>',
+    '<style>.readonly-field-vis{background:#f3f4f6!important;color:#4b5563!important;border:1px dashed #9ca3af!important;cursor:not-allowed}.readonly-label{display:flex;align-items:center;gap:.4rem}.readonly-badge{font-size:.72rem;line-height:1;padding:.18rem .42rem;border-radius:999px;background:#e5e7eb;color:#374151;text-transform:uppercase;letter-spacing:.03em}.CodeMirror{height:560px;border:1px solid #374151;border-radius:10px;font-size:13px}.ai-fix-panel{margin-top:14px;padding:14px;border:1px solid #d1d5db;border-radius:10px;background:#f8fafc}.ai-wait-overlay{position:fixed;inset:0;background:rgba(15,23,42,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}.ai-wait-overlay.hidden{display:none}.ai-wait-card{width:min(560px,100%);background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;box-shadow:0 20px 40px rgba(2,6,23,.25)}.ai-wait-title{margin:0 0 8px;font-size:1.1rem;font-weight:700;color:#0f172a}.ai-wait-meta{margin:0 0 10px;color:#334155}.ai-wait-timer{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:1.25rem;font-weight:700;color:#111827;background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:8px 12px;display:inline-block}.ai-wait-progress-track{width:100%;height:12px;background:#e2e8f0;border-radius:999px;overflow:hidden;border:1px solid #cbd5e1;margin:8px 0 10px}.ai-wait-progress-fill{height:100%;width:0;background:linear-gradient(90deg,#2563eb,#0ea5e9);transition:width .4s ease}.ai-wait-progress-label{font-weight:700;color:#0f172a}</style>',
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>',
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>',
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>',
@@ -529,7 +541,14 @@ include __DIR__ . '/header.php';
                                             $providerLabel = trim((string)($profile['provider'] ?? ''));
                                             $modelLabel = trim((string)($profile['model'] ?? ''));
                                         ?>
-                                        <option value="<?php echo h($profileId); ?>"<?php echo $selectedAttr; ?>>
+                                        <?php $timingInfo = $aiTimingByProfile[$profileId] ?? ['avg_seconds' => 0, 'sample_count' => 0, 'model' => (string)$modelLabel]; ?>
+                                        <option
+                                            value="<?php echo h($profileId); ?>"
+                                            data-ai-model="<?php echo h((string)$timingInfo['model']); ?>"
+                                            data-avg-seconds="<?php echo h((int)($timingInfo['avg_seconds'] ?? 0)); ?>"
+                                            data-sample-count="<?php echo h((int)($timingInfo['sample_count'] ?? 0)); ?>"
+                                            <?php echo $selectedAttr; ?>
+                                        >
                                             <?php echo h($profileLabel !== '' ? $profileLabel : ('AI #' . $profileId)); ?>
                                             <?php echo h(' [' . $providerLabel . ' | ' . $modelLabel . ']'); ?>
                                         </option>
@@ -559,8 +578,12 @@ include __DIR__ . '/header.php';
         <div class="ai-wait-card">
             <h2 class="ai-wait-title">Applying AI fix</h2>
             <p class="ai-wait-meta">Please wait while the AI is generating the updated code.</p>
-            <p class="ai-wait-meta">Elapsed time: <span id="aiWaitTimer" class="ai-wait-timer">0s</span></p>
-            <p class="ai-wait-meta">This request may take more or less time depending on the AI model being used.</p>
+            <p class="ai-wait-meta">Model average: <strong id="aiWaitAverage">n/a</strong> (<span id="aiWaitModel">model</span>)</p>
+            <p class="ai-wait-meta">Current request: <span id="aiWaitTimer" class="ai-wait-timer">0s</span></p>
+            <div class="ai-wait-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Estimated AI fix progress">
+                <div id="aiWaitProgressFill" class="ai-wait-progress-fill"></div>
+            </div>
+            <p class="ai-wait-meta">Estimated progress: <span id="aiWaitProgressLabel" class="ai-wait-progress-label">0%</span></p>
         </div>
     </div>
 
@@ -588,12 +611,19 @@ include __DIR__ . '/header.php';
 
         const aiWaitOverlay = document.getElementById('aiWaitOverlay');
         const aiWaitTimer = document.getElementById('aiWaitTimer');
+        const aiWaitAverage = document.getElementById('aiWaitAverage');
+        const aiWaitModel = document.getElementById('aiWaitModel');
+        const aiWaitProgressFill = document.getElementById('aiWaitProgressFill');
+        const aiWaitProgressLabel = document.getElementById('aiWaitProgressLabel');
+        const aiProfileSelect = document.getElementById('ai_fix_id_ai_db');
+        const aiWaitProgressTrack = aiWaitOverlay ? aiWaitOverlay.querySelector('.ai-wait-progress-track') : null;
         const aiFixButton = document.querySelector('button[name="action"][value="ai_fix_result"]');
         const saveResultButton = document.querySelector('button[name="action"][value="save_result"]');
         const actionIntentInput = document.getElementById('action_intent');
         const editResultForm = document.querySelector('form[method="post"]');
         let aiWaitInterval = null;
         let aiWaitStarted = false;
+        let expectedSeconds = 20;
 
         function formatElapsed(seconds) {
             if (seconds < 60) {
@@ -604,6 +634,61 @@ include __DIR__ . '/header.php';
             return mins + 'm ' + secs + 's';
         }
 
+        function getSelectedTimingInfo() {
+            if (!aiProfileSelect || aiProfileSelect.selectedIndex < 0) {
+                return { model: 'model', avgSeconds: 0, sampleCount: 0 };
+            }
+
+            const option = aiProfileSelect.options[aiProfileSelect.selectedIndex];
+            const avgSeconds = parseInt(option.dataset.avgSeconds || '0', 10);
+            const sampleCount = parseInt(option.dataset.sampleCount || '0', 10);
+
+            return {
+                model: option.dataset.aiModel || 'model',
+                avgSeconds: Number.isFinite(avgSeconds) ? Math.max(0, avgSeconds) : 0,
+                sampleCount: Number.isFinite(sampleCount) ? Math.max(0, sampleCount) : 0,
+            };
+        }
+
+        function computeEstimatedProgress(currentElapsed, expected) {
+            const expectedSafe = Math.max(4, expected);
+            const ratio = currentElapsed / expectedSafe;
+            if (ratio <= 1) {
+                return Math.min(95, Math.round(ratio * 92));
+            }
+
+            const extra = ratio - 1;
+            return Math.min(99, Math.round(92 + (1 - Math.exp(-extra)) * 7));
+        }
+
+        function updateTimingMeta() {
+            const info = getSelectedTimingInfo();
+            expectedSeconds = info.avgSeconds > 0 ? info.avgSeconds : 20;
+
+            if (aiWaitModel) {
+                aiWaitModel.textContent = info.model || 'model';
+            }
+
+            if (aiWaitAverage) {
+                aiWaitAverage.textContent = info.avgSeconds > 0
+                    ? formatElapsed(info.avgSeconds) + ' average' + (info.sampleCount > 0 ? ' on ' + info.sampleCount + ' run(s)' : '')
+                    : 'no history yet';
+            }
+        }
+
+        function renderProgress(elapsed) {
+            const progress = computeEstimatedProgress(elapsed, expectedSeconds);
+            if (aiWaitProgressFill) {
+                aiWaitProgressFill.style.width = progress + '%';
+            }
+            if (aiWaitProgressLabel) {
+                aiWaitProgressLabel.textContent = progress + '%';
+            }
+            if (aiWaitProgressTrack) {
+                aiWaitProgressTrack.setAttribute('aria-valuenow', String(progress));
+            }
+        }
+
         function startAiWaitOverlay() {
             if (aiWaitStarted || !aiWaitOverlay || !aiWaitTimer) {
                 return;
@@ -612,8 +697,10 @@ include __DIR__ . '/header.php';
             aiWaitStarted = true;
             aiWaitOverlay.classList.remove('hidden');
 
+            updateTimingMeta();
             let elapsed = 0;
             aiWaitTimer.textContent = formatElapsed(elapsed);
+            renderProgress(elapsed);
 
             if (aiWaitInterval) {
                 clearInterval(aiWaitInterval);
@@ -621,8 +708,14 @@ include __DIR__ . '/header.php';
             aiWaitInterval = setInterval(function () {
                 elapsed += 1;
                 aiWaitTimer.textContent = formatElapsed(elapsed);
+                renderProgress(elapsed);
             }, 1000);
 
+        }
+
+        if (aiProfileSelect) {
+            aiProfileSelect.addEventListener('change', updateTimingMeta);
+            updateTimingMeta();
         }
 
         if (aiFixButton && actionIntentInput) {
